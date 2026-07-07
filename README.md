@@ -4,6 +4,12 @@ A single-file GUI for **Recycle Bin triage** with Eric Zimmerman's [RBCmd](https
 
 When a file goes to the Recycle Bin, Windows writes a metadata file — `$I……` (Vista and later) or `INFO2` (XP) — recording the item's **original full path**, its **size**, and the **deletion timestamp**. RBCmd parses those; this wrapper scores and pivots them. A surviving `$I` proves a deletion even when the matching `$R` content file is gone.
 
+![Deletions view](images/deletions-view.png)
+
+> Deletions view over a synthetic bin: a deleted `node.exe` from AppData, an `exfil-bundle.zip` from Temp and a
+> `collect.ps1` all score 3 and shade; per-SID rollup and deletion timeline available as tabs. Screenshot uses
+> synthetic data (fake host `ACME-WS01` / user `jdoe`) — no real case data.
+
 ## Quick start
 
 1. Put `RBCmd-Wrapper.hta` anywhere and double-click it — use **Update / download RBCmd** to fetch the engine, or point it at an existing copy (KAPE `Modules\bin` is found automatically). RBCmd is near-instant.
