@@ -1,0 +1,25 @@
+# Case data & tool binaries must never be committed
+*.csv
+_Processed/
+Exported CSVs/
+Exported_CSVs/
+
+# RBCmd binaries (users download their own)
+RBCmd.exe
+RBCmd.dll
+RBCmd*.json
+
+# local dev / state
+IOC.txt
+IOC.csv
+*.boot.log
+*.settings.json
+*.log
+runinfo.json
+SPEC.md
+*-SPEC.md
+BUILD-NOTES.md
+
+# OS cruft
+Thumbs.db
+desktop.ini

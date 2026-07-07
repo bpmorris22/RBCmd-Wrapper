@@ -1,0 +1,1658 @@
+<!doctype html>
+<html>
+<head>
+<meta http-equiv="x-ua-compatible" content="IE=edge">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>RBCmd Wrapper</title>
+<HTA:APPLICATION
+  ID="rbcmdHta"
+  APPLICATIONNAME="RBCmd Wrapper"
+  BORDER="thick"
+  CAPTION="yes"
+  SCROLL="auto"
+  SINGLEINSTANCE="yes"
+  SHOWINTASKBAR="yes"
+  MAXIMIZEBUTTON="yes"
+  MINIMIZEBUTTON="yes"
+  INNERBORDER="no"
+  CONTEXTMENU="yes"
+  SELECTION="yes" />
+<!--
+  RBCmd CSV contract, VERIFIED 2026-07-07 against RBCmd 1.5.0.0 (KAPE Modules\bin copy) on real
+  as-dbms $I files:
+
+  <yyyyMMddHHmmss>_RBCmd_Output.csv  (one row per recovered $I / INFO2 record) in the outDir root:
+    SourceName,FileType,FileName,FileSize,DeletedOn
+    - SourceName = full path to the $I file (its per-user \S-1-5-21-…\ bin folder yields the SID);
+      FileType = "$I" (Vista+) or "INFO2" (XP); FileName = the original full path of the deleted
+      item; FileSize = bytes (integer); DeletedOn = UTC "yyyy-MM-dd HH:mm:ss".
+    - -d recurses and finds every $I* (and legacy INFO2) below the input; $R* content files are
+      ignored by RBCmd. Emptied bins leave nothing here — go to $UsnJrnl for those.
+
+  RBCmd crashes on a bare no-arg run (Console.WindowWidth, like LECmd/RECmd) — version detection
+  MUST use --version (prints just "1.5.0.0"). Processing runs in a visible console like the family.
+  RBCmd is a single flat exe (no Plugins/ folder, no batch file, no dirty-hive concept).
+-->
+<style>
+  html{margin:0;height:100%;background:#0d1117}
+  body{margin:0;height:100%;background:#0d1117;color:#e6edf3;font-family:Segoe UI,Tahoma,sans-serif;font-size:16px}
+  #content{zoom:0.9}
+  a{color:#58a6ff}
+  .mono{font-family:Consolas,"Courier New",monospace}
+  .muted{color:#8b949e}
+  .err{color:#f85149}
+  .ok{color:#3fb950}
+  header{padding:8px 14px;background:#161b22;border-bottom:1px solid #30363d}
+  header h1{display:inline-block;font-size:15px;margin:0;font-weight:600;vertical-align:middle}
+  header h1 small{color:#8b949e;font-weight:400}
+  .pill{display:inline-block;font-size:11px;color:#8b949e;border:1px solid #30363d;border-radius:20px;padding:2px 10px;margin-left:8px;vertical-align:middle}
+  .wrap{padding:12px 14px}
+  .card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px;margin-bottom:12px}
+  .card h3{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#8b949e}
+  label.fld{display:block;margin:6px 0 2px;font-size:11px;color:#8b949e}
+  input.txt,select,textarea{background:#1c2330;border:1px solid #30363d;color:#e6edf3;border-radius:6px;padding:5px 8px;font-size:13px;font-family:Consolas,monospace}
+  input.wide{width:62%}
+  .btn{background:#1c2330;border:1px solid #30363d;color:#e6edf3;border-radius:6px;padding:6px 12px;font-size:13px;cursor:pointer;margin:2px}
+  .btn:hover{border-color:#58a6ff}
+  .btn.primary{background:#1f6feb;border-color:#1f6feb}
+  .btn.on{background:#1f6feb;border-color:#1f6feb;color:#fff}
+  .row{white-space:nowrap}
+  .stat{display:inline-block;background:#1c2330;border:1px solid #30363d;border-radius:8px;padding:6px 12px;margin:0 6px 6px 0;min-width:70px;vertical-align:top}
+  .stat .n{font-size:17px;font-weight:700;display:block}
+  .stat .l{font-size:10px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px}
+  .cards3{width:100%}
+  .col3{display:inline-block;width:32%;vertical-align:top;margin-right:1%}
+  .brow{white-space:nowrap;margin:3px 0}
+  .blab{display:inline-block;width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;font-family:Consolas,monospace;font-size:11px}
+  .blab.lnk{cursor:pointer;color:#58a6ff}
+  .blab.lnk:hover{text-decoration:underline}
+  .btrack{display:inline-block;width:32%;height:12px;background:#1c2330;border-radius:3px;overflow:hidden;vertical-align:middle}
+  .bfill{display:block;height:100%;background:#1f6feb}
+  .bval{display:inline-block;width:18%;text-align:right;font-size:11px;color:#8b949e;vertical-align:middle}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{text-align:left;padding:4px 7px;border-bottom:1px solid #30363d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  th{background:#1c2330;cursor:pointer;color:#c9d1d9;position:relative;z-index:3;box-shadow:0 1px 0 #30363d}
+  th:hover{color:#58a6ff}
+  .cgrip{position:absolute;top:0;right:-4px;width:8px;height:100%;cursor:col-resize;z-index:6}
+  .cgrip:hover{background:#58a6ff;filter:alpha(opacity=45);opacity:.45}
+  td{max-width:360px}
+  tr.sus td{background:#2a1416}
+  tr.sus td.first{border-left:3px solid #ff6b6b}
+  tr.sel td{background:#1c2f4a}
+  .scroll{max-height:52vh;overflow:auto;border:1px solid #30363d;border-radius:8px}
+  .tag{display:inline-block;font-size:10px;padding:1px 6px;border-radius:10px;font-weight:600;margin-right:3px}
+  .tag.sus{background:#3a1416;color:#ff6b6b}
+  .tag.usr{background:#3a2d10;color:#d29922}
+  .tag.lol{background:#10263f;color:#58a6ff}
+  .tag.rare{background:#241a3a;color:#b083f0}
+  .tag.ioc{background:#3a1416;color:#ff6b6b;border:1px solid #ff6b6b}
+  .tag.gen{background:#21262d;color:#8b949e}
+  .dl{font-family:Consolas,"Courier New",monospace;font-size:11px;max-height:210px;overflow:auto;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:6px;margin:4px 0;white-space:nowrap}
+  .dl div{overflow:hidden;text-overflow:ellipsis}
+  .hl-user{color:#d29922}
+  .hl-ioc{color:#ff6b6b;font-weight:700}
+  #log{white-space:pre-wrap;font-family:Consolas,monospace;font-size:11px;color:#8b949e;max-height:140px;overflow:auto;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px;display:none;margin-top:8px}
+  .hide{display:none}
+  .lnk{cursor:pointer;color:#58a6ff}
+  .lnk:hover{text-decoration:underline}
+  .sep{display:inline-block;width:1px;height:18px;background:#30363d;margin:0 6px;vertical-align:middle}
+  .modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.66);z-index:1000;overflow:auto}
+  .modal .mcard{max-width:780px;margin:36px auto;background:#161b22;border:1px solid #30363d;border-radius:10px;padding:18px 22px}
+  .modal h2{margin:0 0 6px;font-size:18px;font-weight:600}
+  .modal h3{margin:12px 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:#8b949e}
+  .modal ul{margin:4px 0;padding-left:20px}.modal li{margin:3px 0;font-size:13px}
+  .modal p{font-size:13px;margin:6px 0}
+  .modal code{background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:2px 6px;font-family:Consolas,monospace;font-size:12px}
+  .modal .x{float:right;cursor:pointer;color:#8b949e;font-size:22px;line-height:1}.modal .x:hover{color:#e6edf3}
+  .modal .gh{font-family:Consolas,monospace;font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>RBCmd Wrapper <small>&mdash; recycle-bin ($I) triage <span id="appver"></span></small></h1>
+  <span class="pill" id="verpill">version: checking&hellip;</span>
+  <span class="pill" id="srcpill">no data loaded</span>
+  <span style="float:right">
+    <button class="btn" id="helpBtn" onclick="openHelp()" title="Help, about &amp; GitHub link">Help</button>
+    <button class="btn primary hide" id="selfUpd" onclick="doSelfUpdate()" title="A newer version is available on GitHub">Update</button>
+    <button class="btn" id="fdown" title="Smaller text">A&minus;</button>
+    <button class="btn" id="fup" title="Larger text">A+</button>
+  </span>
+</header>
+
+<div class="wrap" id="content">
+
+  <!-- CONTROL PANEL -->
+  <div class="card">
+    <h3>RBCmd control panel</h3>
+    <div class="muted" id="exeline" style="font-size:11px;margin-bottom:6px"></div>
+    <label class="fld">Recycle-bin data to process
+      &mdash; <select id="inMode" title="Single file = process one $I metadata file (RBCmd -f). Directory = recurse a folder (RBCmd -d) and process every $I* (and legacy INFO2) found inside — point it at a host's collection root and RBCmd finds every per-user $Recycle.Bin below (KAPE/Velociraptor trees work as-is).">
+        <option value="d">directory (recursive)</option><option value="f">single $I file</option></select>
+      <span class="muted" style="font-size:11px">&nbsp; RBCmd reads the $I metadata (original path, size, deletion time); $R content files are ignored.</span>
+    </label>
+    <input class="txt wide" id="pfPath" value="">
+    <input type="file" id="pfPick" style="display:none">
+    <button class="btn" id="browseBtn">Browse&hellip;</button>
+    <label class="fld" title="Required before processing. Guessed from the input path (Collection-<host>-… segments, or this machine for live paths) — overwrite it if the guess is wrong.">Target hostname (required) &mdash; names the output folder _Processed\&lt;host&gt;\RBCmd next to this app</label>
+    <input class="txt" id="hostName" value="" style="width:260px" placeholder="e.g. LT-2738RQ3">
+    <label class="fld">CSV output directory</label>
+    <input class="txt wide" id="outDir" value="">
+    <button class="btn" id="openDirBtn">Open folder</button>
+    <div style="margin-top:10px">
+      <button class="btn" id="verBtn">Check version</button>
+      <button class="btn" id="updBtn">Update / download RBCmd</button>
+      <span class="sep"></span>
+      <button class="btn primary" id="procBtn">Process &rarr; analyze</button>
+      <button class="btn" id="loadBtn">Load existing CSV&hellip;</button>
+      <input type="file" id="csvPick" style="display:none">
+      <span class="sep"></span>
+      <button class="btn" id="logToggle">Show log</button>
+      <span class="muted" id="status" style="margin-left:8px"></span>
+    </div>
+    <div style="margin-top:8px" id="producedRow" class="hide">
+      <label class="fld">Produced CSVs &mdash; pick one to view</label>
+      <select id="producedSel" style="min-width:70%"></select>
+      <button class="btn" id="loadSelBtn">Load selected</button>
+    </div>
+    <div id="log"></div>
+  </div>
+
+  <!-- RESULTS -->
+  <div id="results" class="hide">
+    <div class="card">
+      <h3 id="ovTitle">Overview</h3>
+      <div id="statbar"></div>
+    </div>
+
+    <div class="card cards3 hide" id="pfCards">
+      <div class="col3"><h3>Top users (by deletions)</h3><div id="topExes"></div></div>
+      <div class="col3"><h3>Most recent deletions</h3><div id="topNew"></div></div>
+      <div class="col3"><h3>Suspicious deletions</h3><div id="topSus"></div></div>
+    </div>
+
+    <div class="card">
+      <h3 id="tableTitle">Records</h3>
+      <div class="row hide" style="margin-bottom:8px" id="viewToggle">
+        <button class="btn on" id="vDel" title="One row per deleted item ($I record), ranked by suspicion score">Deletions</button>
+        <button class="btn" id="vTime" title="Same rows sorted by deletion time (newest first)">Timeline (by DeletedOn)</button>
+        <button class="btn" id="vUsers" title="Grouped per SID (per-user bin): deletion count, total bytes, newest deletion and max score. Click a group to filter the Deletions view to that user.">Users</button>
+      </div>
+      <div class="row hide" style="margin-bottom:8px" id="pfCats">
+        <button class="btn on" data-cat="all">All</button>
+        <button class="btn" data-cat="sus">Suspicious</button>
+        <button class="btn" data-cat="ioc">IOC hits</button>
+        <button class="btn" data-cat="exec">Executables</button>
+        <button class="btn" data-cat="archive">Archives</button>
+        <button class="btn" data-cat="userpath">User-path</button>
+        <button class="btn" data-cat="syspath">System-path</button>
+      </div>
+      <div class="row" style="margin-bottom:8px">
+        <input class="txt" id="q" placeholder="search all columns&hellip;" style="width:280px">
+        <span id="srcWrap" class="hide"><span class="sep"></span><label class="muted" style="font-size:12px">source:</label>
+          <select id="srcSel" title="Filter by source file."><option value="">all source files</option></select></span>
+        <span id="pfDateCtl" class="hide">
+          <span class="sep"></span>
+          <input class="txt mono" id="dfrom" placeholder="from YYYY-MM-DD" style="width:140px" title="Filter by deletion time (UTC)">
+          <span class="muted">&rarr;</span>
+          <input class="txt mono" id="dto" placeholder="to YYYY-MM-DD" style="width:140px" title="Filter by deletion time (UTC)">
+        </span>
+        <span class="sep"></span>
+        <button class="btn" id="iocBtn">IOC / keywords&hellip;</button>
+        <button class="btn" id="clearBtn">clear</button>
+        <button class="btn" id="exportBtn">Export view &rarr; CSV</button>
+        <button class="btn" id="copyBtn">Copy for case notes</button>
+        <span class="muted" id="count" style="margin-left:8px"></span>
+      </div>
+      <div id="iocWrap" class="hide" style="margin-bottom:8px">
+        <label class="fld">IOC / keyword list — comma or newline separated; matched (case-insensitive substring) against the original path, the file name, the SID and the source $I path. Matches score +3 and light up red in the detail pane.</label>
+        <textarea id="iocBox" rows="3" style="width:70%;vertical-align:top"></textarea>
+        <button class="btn" id="iocApply">Apply</button>
+        <button class="btn" id="iocLoad">Load file&hellip;</button>
+        <input type="file" id="iocPick" style="display:none">
+        <span class="muted" id="iocInfo" style="font-size:11px"></span>
+      </div>
+      <div class="scroll" id="tblScroll"><table id="tbl"></table></div>
+      <div class="muted" id="pfFoot" style="font-size:11px;margin-top:6px">All timestamps UTC (DeletedOn). Suspicious rows are shaded (heuristic score &ge; 3: IOC hit, deleted executable/script, deleted archive [staging-cleanup signal], user-writable or system-dir origin). Click a row for full detail. SIDs are shown raw — map them to usernames offline via the SAM hive. Max 6000 rows shown; export writes the full filtered set.</div>
+    </div>
+
+    <div class="card hide" id="detailCard">
+      <h3>Record detail <span class="lnk" id="detCopy" style="float:right;margin-left:12px">copy record</span><span class="lnk" id="detClose" style="float:right">close &times;</span></h3>
+      <div id="detBody"></div>
+    </div>
+  </div>
+
+</div>
+
+<script language="JScript">
+"use strict";
+
+var APP_VERSION = "0.1.0";
+var KNOWN_LATEST_RBCMD = "1.5.0.0";                                            // baseline as of 2026-07-07 (KAPE Modules\bin exe)
+var RBCMD_ZIP_URL = "https://download.ericzimmermanstools.com/RBCmd.zip";      // official EZ mirror (flat exe at zip root)
+var RBCMD_PAGE = "https://ericzimmerman.github.io/";                           // for live latest-version lookup
+var EXE = "";
+var EXE_DIR = "";
+var LOCAL_VER = "";
+var LATEST_VER = "";
+var WEB_OK = false;                  // could we reach the Zimmerman Tools site to check latest?
+var QUERY = "";
+var MAXROWS = 6000;
+var LASTOUTDIR = "";
+var qTimer = null;
+var MODE = "rbin";                   // "rbin" = rich recycle-bin analysis, "generic" = raw table
+var VIEW = "del";                    // rbin mode: "del" = score-ranked deletions, "time" = deletion timeline, "users" = grouped per SID
+var ROWS = [];                       // deletion records (one per $I / INFO2)
+var CURCAT = "all";
+var DFROM = 0, DTO = 0;
+var SORTKEY = 0, SORTDIR = 1;        // deletions view: default score desc (col 0 sorts by -score)
+var TSORTKEY = 0, TSORTDIR = -1;     // timeline view: default DeletedOn desc
+var CSORTKEY = 1, CSORTDIR = -1;     // users view: default deletion count desc
+var IOCS = [];                       // lowercased IOC / keyword terms
+var DETREC = null;                   // record currently shown in the detail pane
+var GHEAD = null, GROWS = [], GSRC = "";
+var GSORTKEY = -1, GSORTDIR = 1;
+var GSRCIDX = -1;                    // generic mode: index of the SourceFile(name) column
+var SRCFILTER = "";                  // selected source-file filter (generic mode)
+var BUSY = false;                    // an RBCmd run is in progress
+var PRODUCED = [];                   // CSVs produced by the last run
+
+/* suspicion knobs (spec §Scoring, B1–B5; sus threshold score >= 3) */
+/* B2 deleted executable/script */
+var EXEC_EXT={exe:1,dll:1,sys:1,ps1:1,bat:1,cmd:1,vbs:1,js:1,jse:1,wsf:1,hta:1,scr:1,msi:1,jar:1};
+/* B3 deleted archive — staging-cleanup signal (exfil bundle deleted after upload) */
+var ARCH_EXT={zip:1,rar:1,"7z":1,cab:1,tar:1,gz:1,tgz:1};
+
+/* ---------- tiny helpers ---------- */
+function $(id){ return document.getElementById(id); }
+function esc(s){ if(s==null) return ""; s=String(s);
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function endsWith(s,suf){ if(!s) return false; s=String(s); return s.length>=suf.length && s.substring(s.length-suf.length)===suf; }
+function contains(s,sub){ return String(s).indexOf(sub)>=0; }
+function nf(n){ n=String(n); var dot=n.indexOf("."); var dec=""; if(dot>=0){ dec=n.substring(dot); n=n.substring(0,dot); }
+  var r="",c=0; for(var k=n.length-1;k>=0;k--){ r=n.charAt(k)+r; c++; if(c%3===0&&k>0) r=","+r; } return r+dec; }
+function setStatus(msg,cls){ var el=$("status"); el.innerHTML=esc(msg); el.className=cls||"muted"; }
+function appendLog(t){ var el=$("log"); if(el.getAttribute("data-ph")==="1"){ el.innerHTML=""; el.setAttribute("data-ph","0"); }
+  el.style.display="block"; $("logToggle").innerHTML="Hide log"; el.innerHTML+=esc(t)+"\n"; el.scrollTop=el.scrollHeight; }
+function trimStr(s){ return String(s).replace(/^\s+|\s+$/g,""); }
+function baseName(p){ if(!p) return ""; p=String(p); var i=Math.max(p.lastIndexOf("\\"),p.lastIndexOf("/")); return i>=0?p.substring(i+1):p; }
+function showEl(id,vis){ var e=$(id); if(!e) return; var c=e.className.replace(/\s*\bhide\b/g,"");
+  e.className = vis ? c : (c+" hide"); }
+function msOf(s){ if(!s) return 0; var m=String(s).match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+  if(!m) return 0; return Date.UTC(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]); }
+function dayOf(s){ if(!s) return 0; var m=String(s).match(/(\d{4})-(\d{2})-(\d{2})/); if(!m) return 0; return Number(m[1]+m[2]+m[3]); }
+function clip(s,n){ s=String(s==null?"":s); return s.length>n?(s.substring(0,n)+"…"):s; }
+
+/* ---------- file IO via ActiveX (UTF-8 safe, with network-zone fallback) ----------
+   ADODB.Stream is the proper UTF-8 reader, but when the .hta runs from a NETWORK location
+   (mapped drive / UNC share) mshta assigns it the intranet/internet zone and ADODB refuses
+   every LoadFromFile/SaveToFile with "Safety settings on this computer prohibit accessing a
+   data source on another domain" — regardless of where the target file lives. Seen in the
+   field 2026-07-02 (app run from Z:\ on an analysis VM). FSO is not zone-checked, so we fall
+   back to ANSI file IO: CSV structure is unaffected (all-ASCII), only rare non-ASCII chars
+   (accented usernames in paths) display mojibake'd. Best fidelity = run locally. */
+var FILE_IO="adodb";                 // flips to "fso" permanently on the first zone-policy block
+function zoneNote(){
+  appendLog("NOTE: this app is running from a network location, so Windows zone policy blocks the UTF-8 file reader (ADODB.Stream). Falling back to ANSI file IO — everything works, but non-ASCII characters (accented usernames in paths) may display incorrectly. For full fidelity copy this folder to a LOCAL path (e.g. C:\\Tools\\RBCmd-Wrapper) and run it from there.");
+}
+function readUtf8(path){
+  if(FILE_IO==="adodb"){
+    try{
+      // ReadText(-1) on a large file is quadratic in MSHTML (30s for 16MB); read in 64KB chunks (~0.1s).
+      var st=new ActiveXObject("ADODB.Stream");
+      st.Type=2; st.Charset="utf-8"; st.Open(); st.LoadFromFile(path);
+      var parts=[]; while(!st.EOS){ parts.push(st.ReadText(65536)); } st.Close();
+      return parts.join("");
+    }catch(e){
+      if(!/safety settings|data source/i.test(e.message||"")) throw e;   // real IO errors propagate
+      FILE_IO="fso"; zoneNote();
+    }
+  }
+  var fso=new ActiveXObject("Scripting.FileSystemObject");
+  var f=fso.OpenTextFile(path,1,false,0), out=f.ReadAll(); f.Close();
+  // a UTF-8 BOM read as ANSI shows up as three cp1252 chars — strip it
+  if(out.length>=3 && out.charCodeAt(0)===239 && out.charCodeAt(1)===187 && out.charCodeAt(2)===191) out=out.substring(3);
+  return out;
+}
+function writeUtf8(path,text){
+  if(FILE_IO==="adodb"){
+    try{
+      var st=new ActiveXObject("ADODB.Stream");
+      st.Type=2; st.Charset="utf-8"; st.Open(); st.WriteText(text); st.SaveToFile(path,2); st.Close();
+      return;
+    }catch(e){
+      if(!/safety settings|data source/i.test(e.message||"")) throw e;
+      FILE_IO="fso"; zoneNote();
+    }
+  }
+  var fso=new ActiveXObject("Scripting.FileSystemObject");
+  var f=fso.CreateTextFile(path,true,false); f.Write(text); f.Close();
+}
+function uid(){ return new Date().getTime()+""+Math.floor(Math.random()*100000); }
+/* cmd expands %N / %VAR% inside .bat lines even within quotes — Velociraptor trees contain literal % (C%3A) */
+function batEsc(s){ return String(s).replace(/%/g,"%%"); }
+
+/* Run a batch script, wait, return {rc, log}. show=true → visible console window. */
+function runBat(lines, show){
+  var fso=new ActiveXObject("Scripting.FileSystemObject");
+  var sh=new ActiveXObject("WScript.Shell");
+  var tmp=fso.GetSpecialFolder(2)+"";
+  var stamp=uid();
+  var bat=tmp+"\\rbcmd_"+stamp+".bat";
+  var logp=tmp+"\\rbcmd_"+stamp+".log";
+  var f=fso.CreateTextFile(bat,true);
+  f.WriteLine("@echo off");
+  for(var i=0;i<lines.length;i++){ f.WriteLine(lines[i].replace(/__LOG__/g,logp)); }
+  f.Close();
+  var rc=sh.Run('cmd /c ""'+bat+'""', show?1:0, true);
+  var txt="";
+  try{ if(fso.FileExists(logp)) txt=readUtf8(logp); }catch(e){ txt="(could not read log: "+e.message+")"; }
+  try{ fso.DeleteFile(bat); }catch(e2){}
+  try{ if(fso.FileExists(logp)) fso.DeleteFile(logp); }catch(e3){}
+  return { rc:rc, log:txt };
+}
+
+/* Run a batch NON-blocking; writes a .done marker when finished. Caller polls with pollDone().
+   This keeps the HTA script responsive (no MSHTML long-running-script watchdog). */
+function runBatAsync(lines, show){
+  var fso=new ActiveXObject("Scripting.FileSystemObject");
+  var sh=new ActiveXObject("WScript.Shell");
+  var tmp=fso.GetSpecialFolder(2)+"";
+  var stamp=uid();
+  var bat=tmp+"\\rbcmd_"+stamp+".bat";
+  var logp=tmp+"\\rbcmd_"+stamp+".log";
+  var donep=tmp+"\\rbcmd_"+stamp+".done";
+  var f=fso.CreateTextFile(bat,true);
+  f.WriteLine("@echo off");
+  for(var i=0;i<lines.length;i++){ f.WriteLine(lines[i].replace(/__LOG__/g,logp)); }
+  f.WriteLine('echo done> "'+donep+'"');   // marker written after everything above completes
+  f.Close();
+  sh.Run('cmd /c ""'+bat+'""', show?1:0, false);   // false = do NOT block the script
+  return { bat:bat, log:logp, done:donep, elapsed:0 };
+}
+function pollDone(ctx){
+  var fso=new ActiveXObject("Scripting.FileSystemObject");
+  if(fso.FileExists(ctx.done)){
+    var log=""; try{ if(fso.FileExists(ctx.log)) log=readUtf8(ctx.log); }catch(e){ log="(could not read log: "+e.message+")"; }
+    try{ fso.DeleteFile(ctx.bat); }catch(e1){}
+    try{ fso.DeleteFile(ctx.done); }catch(e2){}
+    try{ if(fso.FileExists(ctx.log)) fso.DeleteFile(ctx.log); }catch(e3){}
+    ctx.onDone(log);
+    return;
+  }
+  ctx.elapsed+=1;
+  if(ctx.elapsed>1800){ ctx.onTimeout&&ctx.onTimeout(); return; }   // 30-min safety cap
+  if(ctx.onTick) ctx.onTick(ctx.elapsed);
+  window.setTimeout(function(){ pollDone(ctx); }, 1000);
+}
+
+/* ---------- source-file filter (generic mode) ---------- */
+function distinctVals(arr){ var seen={}, out=[]; for(var i=0;i<arr.length;i++){ var v=arr[i]; if(v!=null && v!=="" && !seen[v]){ seen[v]=1; out.push(v); } } return out; }
+function shortPathN(p,n){ p=String(p); var parts=p.split("\\"); if(parts.length<=n) return p; return "…\\"+parts.slice(parts.length-n).join("\\"); }
+function shortPath(p){ return shortPathN(p,4); }
+function populateSourceFilter(vals){
+  var sel=$("srcSel"); sel.innerHTML="";
+  var o0=document.createElement("option"); o0.value=""; o0.text="all source files ("+vals.length+")"; sel.add(o0);
+  vals=vals.slice(0).sort();
+  for(var i=0;i<vals.length;i++){ var o=document.createElement("option"); o.value=vals[i]; o.text=shortPath(vals[i]); sel.add(o); }
+  SRCFILTER=""; sel.value="";
+  showEl("srcWrap", vals.length>1);
+}
+
+/* ---------- tooling: locate / version / download ---------- */
+function fileExists(p){ try{ return new ActiveXObject("Scripting.FileSystemObject").FileExists(p); }catch(e){ return false; } }
+function folderExists(p){ try{ return new ActiveXObject("Scripting.FileSystemObject").FolderExists(p); }catch(e){ return false; } }
+function parentDir(p){ var i=String(p).lastIndexOf("\\"); return i>=0?p.substring(0,i):p; }
+function htaFolder(){
+  try{ var cl=rbcmdHta.commandLine+""; var m=cl.match(/"([^"]+\.hta)"/i); if(!m) m=cl.match(/([A-Za-z]:\\[^"]+\.hta)/i);
+    if(m) return parentDir(m[1]); }catch(e){}
+  try{ var p=decodeURIComponent(location.pathname+"").replace(/^\//,"").replace(/\//g,"\\"); return parentDir(p); }catch(e2){}
+  return "";
+}
+function resolveExe(){
+  // RBCmd is a single FLAT exe (no Plugins\ folder, no batch file)
+  var fso=new ActiveXObject("Scripting.FileSystemObject");
+  var dir=htaFolder(), cands=[];
+  if(dir) cands.push(dir+"\\RBCmd.exe");
+  cands.push("C:\\Users\\Forensics\\Downloads\\1-Package\\KAPE\\Modules\\bin\\RBCmd.exe");   // confirmed present
+  cands.push("C:\\Tools\\net9\\RBCmd.exe");
+  for(var i=0;i<cands.length;i++){ if(fso.FileExists(cands[i])){ EXE=cands[i]; EXE_DIR=parentDir(cands[i]); return true; } }
+  EXE=""; EXE_DIR=dir||""; return false;
+}
+function checkDeps(){ return []; }   // flat exe — no external support files to check
+function verTuple(v){ var p=String(v).split("."); var a=[]; for(var i=0;i<p.length;i++) a.push(parseInt(p[i],10)||0); return a; }
+function verCmp(a,b){ a=verTuple(a); b=verTuple(b); var n=Math.max(a.length,b.length);
+  for(var i=0;i<n;i++){ var x=a[i]||0,y=b[i]||0; if(x!==y) return x<y?-1:1; } return 0; }
+function fetchLatest(){
+  LATEST_VER=KNOWN_LATEST_RBCMD; WEB_OK=false;
+  try{
+    var x=new ActiveXObject("MSXML2.ServerXMLHTTP.6.0");
+    x.setTimeouts(2000,3000,4000,4000);
+    x.open("GET", RBCMD_PAGE, false); x.send();
+    if(x.status===200){ WEB_OK=true; var t=x.responseText+""; var m=t.match(/RBCmd[\s\S]{0,800}?(\d+\.\d+\.\d+(?:\.\d+)?)/i); if(m) LATEST_VER=m[1]; }
+  }catch(e){ WEB_OK=false; }
+  return LATEST_VER;
+}
+function updateVerPill(){
+  var s=LOCAL_VER?("RBCmd v"+esc(LOCAL_VER)):"RBCmd: not found";
+  if(!WEB_OK){ s+=" &middot; <span style='color:#8b949e'>no internet / no web source</span>"; }
+  else if(LATEST_VER){
+    if(LOCAL_VER && verCmp(LOCAL_VER,LATEST_VER)<0) s+=" &middot; <span style='color:#d29922'>update v"+esc(LATEST_VER)+" available</span>";
+    else if(LOCAL_VER) s+=" &middot; <span style='color:#3fb950'>latest</span>";
+    else s+=" &middot; latest v"+esc(LATEST_VER);
+  }
+  $("verpill").innerHTML=s;
+}
+function evaluateTooling(promptIfNeeded){
+  var dir=htaFolder();
+  var localComplete = dir ? fileExists(dir+"\\RBCmd.exe") : false;   // exe next to the .hta (self-contained)
+  var found=resolveExe();
+  if(EXE) $("exeline").innerHTML="Tool: "+esc(EXE)+"  &middot;  run with DOTNET_ROLL_FORWARD=Major (covers newer-.NET-target builds)";
+  else $("exeline").innerHTML='<span class="err">RBCmd.exe not found next to this app ('+esc(dir||"app folder")+'), in the KAPE Modules\\bin tree, or in C:\\Tools\\net9</span>';
+  if(found) checkVersion(); else { LOCAL_VER=""; }
+  fetchLatest(); updateVerPill();
+  if(!promptIfNeeded) return;
+  if(localComplete){
+    // exe already next to the .hta → only prompt when the web says a newer version exists
+    if(WEB_OK && LOCAL_VER && verCmp(LOCAL_VER,LATEST_VER)<0){
+      if(confirm("A newer RBCmd is available.\n\nNext to this app: v"+LOCAL_VER+"\nLatest online:   v"+LATEST_VER+"\n\nDownload the update next to the app now?")) downloadLatest();
+    }
+  } else {
+    if(WEB_OK){
+      var msg = (found ? ("RBCmd is not set up next to this app (currently using "+EXE+").\n\n") : "RBCmd.exe was not found.\n\n")
+        + "Download the latest (v"+LATEST_VER+") to a self-contained copy next to the app at:\n"+(dir||"?")+"\n\nProceed?";
+      if(confirm(msg)) downloadLatest();
+    } else if(found){
+      setStatus("Using local RBCmd ("+EXE+") — no internet to reach Zimmerman Tools, so can't verify/download the latest.","muted");
+    } else {
+      setStatus("RBCmd.exe not found next to this .hta and no internet to download it. Place RBCmd.exe next to this .hta.","err");
+    }
+  }
+}
+function downloadLatest(){
+  var target=htaFolder()||EXE_DIR;   // always install next to the .hta (self-contained)
+  if(!target){ setStatus("Cannot determine the app folder to install into","err"); return; }
+  if(!WEB_OK && !confirm("The Zimmerman Tools site did not respond earlier (no internet?).\n\nTry downloading RBCmd from\n"+RBCMD_ZIP_URL+"\ninto\n"+target+" anyway?")) return;
+  if(WEB_OK && !confirm("Download latest RBCmd (v"+(LATEST_VER||KNOWN_LATEST_RBCMD)+") from:\n"+RBCMD_ZIP_URL+"\n\nInstall next to the app into:\n"+target+"\n\nProceed?")) return;
+  setStatus("Downloading & installing RBCmd… (give it a moment)","muted");
+  var tq=String(target).replace(/'/g,"''");
+  var ps="$ErrorActionPreference='Stop';"
+    +"[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;"
+    +"$u='"+RBCMD_ZIP_URL+"';"
+    +"$z=Join-Path $env:TEMP 'RBCmd_dl.zip';"
+    +"$x=Join-Path $env:TEMP ('RBCmd_x_'+[guid]::NewGuid().ToString('N'));"
+    +"Invoke-WebRequest -Uri $u -OutFile $z;"
+    +"Expand-Archive -Force -Path $z -DestinationPath $x;"
+    +"$exe=Get-ChildItem -Path $x -Recurse -Filter RBCmd.exe | Select-Object -First 1;"
+    +"if(-not $exe){throw 'RBCmd.exe not found in downloaded archive'};"
+    +"$src=Split-Path $exe.FullName;"
+    +"New-Item -ItemType Directory -Force -Path '"+tq+"' | Out-Null;"
+    +"Copy-Item -Path (Join-Path $src '*') -Destination '"+tq+"' -Recurse -Force;"
+    +"Remove-Item $z,$x -Recurse -Force -ErrorAction SilentlyContinue;"
+    +"Write-Output 'INSTALL_OK'";
+  try{
+    var r=runBat(['powershell -NoProfile -ExecutionPolicy Bypass -Command "'+ps+'" > "__LOG__" 2>&1']);
+    appendLog("--- RBCmd download / install ---\n"+r.log);
+    if((r.log+"").indexOf("INSTALL_OK")>=0){ setStatus("RBCmd installed to "+target,"ok"); evaluateTooling(false); }
+    else setStatus("Download/install failed — see log","err");
+  }catch(e){ setStatus("Download failed: "+e.message,"err"); }
+}
+
+/* ---------- actions ---------- */
+function checkVersion(){
+  if(!EXE || !fileExists(EXE)){ LOCAL_VER=""; updateVerPill(); setStatus("RBCmd.exe not found — use 'Update / download RBCmd'","err"); return; }
+  try{
+    // VERIFIED 2026-07-07: a bare no-arg RBCmd run CRASHES (Console.WindowWidth, like LECmd/RECmd);
+    // --version exits cleanly and prints just the version line ("1.5.0.0").
+    var r=runBat([
+      "set DOTNET_ROLL_FORWARD=Major",
+      '"'+EXE+'" --version > "__LOG__" 2>&1'
+    ]);
+    var m=r.log.match(/(\d+\.\d+\.\d+(?:\.\d+)?)/);
+    if(m){ LOCAL_VER=m[1]; updateVerPill(); setStatus("RBCmd v"+LOCAL_VER+" detected","ok"); }
+    else { LOCAL_VER=""; updateVerPill(); setStatus("Ran RBCmd but could not parse version — see log","err"); appendLog(r.log); }
+  }catch(e){ LOCAL_VER=""; updateVerPill(); setStatus("Version check failed: "+e.message,"err"); }
+}
+
+/* can we actually enumerate this folder? (permission sanity-check before handing it to RBCmd) */
+function canListFolder(p){
+  try{ var fso=new ActiveXObject("Scripting.FileSystemObject");
+    var e=new Enumerator(fso.GetFolder(p).Files); e.atEnd(); return true; }catch(err){ return false; }
+}
+
+/* ---------- target hostname + _Processed output convention (family, 2026-07-06) ----------
+   All processed output lands in <appFolder>\_Processed\<Hostname>\<AppName>\ so the
+   Artifact-Finder (and the operator) can see per-host state at a glance. The hostname field is
+   REQUIRED before processing (not for just viewing CSVs). Guess order: Collection-<host>-<date>
+   segment in the input path → \_Processed\<host>\ in a CLI-passed outDir → live-machine paths
+   (X:\Windows / X:\Users → this computer's name). User-typed values are never overwritten. */
+var APP_NAME="RBCmd";
+var HOST_TOUCHED=false, OUT_TOUCHED=false;
+function sanitHost(s){ return String(s).replace(/[^A-Za-z0-9._\-]/g,"-").replace(/^[\-.]+|[\-.]+$/g,""); }
+function guessHost(p){
+  p=String(p||"");
+  var m=p.match(/Collection-([A-Za-z0-9][A-Za-z0-9\-_\.]*?)-\d{4}-\d{2}-\d{2}/i); if(m) return m[1];
+  m=p.match(/[\\\/]_Processed[\\\/]([^\\\/]+)[\\\/]/i); if(m) return m[1];
+  if(/^[a-z]:\\(windows|users)(\\|$)/i.test(p)){ try{ return new ActiveXObject("WScript.Network").ComputerName+""; }catch(e){} }
+  return "";
+}
+function defaultOutDir(){
+  var h=sanitHost($("hostName").value); if(!h) return "";
+  var base=htaFolder(); if(!base){ try{ base=new ActiveXObject("Scripting.FileSystemObject").GetSpecialFolder(2)+""; }catch(e){ return ""; } }
+  return base+"\\_Processed\\"+h+"\\"+APP_NAME;
+}
+function syncOutDir(){ if(OUT_TOUCHED) return; var d=defaultOutDir(); if(d) $("outDir").value=d; }
+function hostGuessFrom(p){
+  if(!HOST_TOUCHED || !trimStr($("hostName").value)){ var g=guessHost(p); if(g) $("hostName").value=sanitHost(g); }
+  syncOutDir();
+}
+function requireHost(){
+  var h=sanitHost($("hostName").value);
+  if(!h){ setStatus("Target hostname is required — it names the output folder _Processed\\<host>\\"+APP_NAME+". Type the host this artifact came from, then process again.","err");
+    try{ $("hostName").focus(); }catch(e){} return ""; }
+  if(!trimStr($("outDir").value)) syncOutDir();
+  return h;
+}
+
+/* ---------- shared toolkit IOC list (family, 2026-07-06) ----------
+   IOC.txt next to the .hta (the toolkit folder — same file for every wrapper + the
+   Artifact-Finder): one term per line, # comments. Auto-merged into the IOC box at launch
+   (before any /auto run) so one paste covers the whole engagement; terms already present
+   are not duplicated, and the operator's box stays editable as usual. */
+function loadToolkitIoc(){
+  try{
+    var base=htaFolder(); if(!base) return;
+    var p=base+"\\IOC.txt";
+    if(!fileExists(p)) return;
+    var parts=String(readUtf8(p)).split(/\r?\n/), add=[], i;
+    for(i=0;i<parts.length;i++){ var s=trimStr(parts[i]); if(s && s.charAt(0)!=="#") add.push(s); }
+    if(!add.length) return;
+    var cur=$("iocBox").value, curL={}, cp=String(cur).split(/[\r\n,;]+/);
+    for(i=0;i<cp.length;i++){ var c=trimStr(cp[i]).toLowerCase(); if(c) curL[c]=1; }
+    var fresh2=[]; for(i=0;i<add.length;i++){ if(!curL[add[i].toLowerCase()]) fresh2.push(add[i]); }
+    if(!fresh2.length) return;
+    $("iocBox").value=(trimStr(cur)?(cur.replace(/\s+$/,"")+"\r\n"):"")+fresh2.join("\r\n");
+    applyIocs();
+    appendLog("Toolkit IOC list: merged "+fresh2.length+" term(s) from "+p);
+    setStatus("Loaded "+fresh2.length+" IOC term(s) from the toolkit IOC.txt","ok");
+  }catch(e){}
+}
+
+/* ---------- run provenance (family, 2026-07-06) ----------
+   Appended into <outDir>\runinfo.json after every successful run. The Artifact-Finder reads
+   these to bind outputs to their exact source artifact (and host) even without its manifest —
+   standalone wrapper runs show up as processed too. */
+function writeRunInfo(outdir, input, freshFiles){
+  try{
+    var p=String(outdir).replace(/[\\\/]+$/,"")+"\\runinfo.json";
+    var arr=[];
+    try{ if(fileExists(p)){ var old=JSON.parse(readUtf8(p)); if(old && old.length!=null) arr=old; } }catch(e0){}
+    var d=new Date(); function p2(x){ return (x<10?"0":"")+x; }
+    var iso=d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate())+"T"+p2(d.getHours())+":"+p2(d.getMinutes())+":"+p2(d.getSeconds());
+    var names=[]; for(var i=0;i<freshFiles.length && i<50;i++) names.push(freshFiles[i].name||String(freshFiles[i]));
+    arr.push({app:APP_NAME, appVersion:APP_VERSION, host:sanitHost($("hostName").value),
+              input:String(input||""), finishedUtc:iso, files:names});
+    writeUtf8(p, JSON.stringify(arr,null,2));
+    RUNINFO_LAST={path:p, iso:iso};
+  }catch(e){}
+}
+var RUNINFO_LAST=null;   // the entry writeRunInfo just appended — patched with a triage summary after the auto-load
+function patchRunInfoSummary(summary){
+  /* second-phase runinfo write (family, 2026-07-07): the scored rows only exist after the
+     auto-load that follows a run, so the headline triage numbers are patched onto the entry
+     writeRunInfo appended moments earlier. The Artifact-Finder renders these in its
+     per-host triage summary. Best-effort — a missing summary just shows as counts-only. */
+  try{
+    if(!RUNINFO_LAST || !summary) return;
+    var arr=JSON.parse(readUtf8(RUNINFO_LAST.path));
+    if(!arr || arr.length==null) return;
+    for(var i=arr.length-1;i>=0;i--){ var e=arr[i];
+      if(e && e.app===APP_NAME && e.finishedUtc===RUNINFO_LAST.iso){ e.summary=summary; break; } }
+    writeUtf8(RUNINFO_LAST.path, JSON.stringify(arr,null,2));
+  }catch(e){}
+}
+function buildRunSummary(){
+  /* headline triage numbers from the scored rows: entries, wrapper-flagged count, max score,
+     top-3 "name (score)" — here name = original file name of the deleted item.
+     "Flagged" uses this app's own suspicion threshold (rec.sus). */
+  try{
+    if(!ROWS.length) return null;
+    var flagged=0, maxScore=0, top=[], i;
+    for(i=0;i<ROWS.length;i++){ var r=ROWS[i];
+      if(r.score>maxScore) maxScore=r.score;
+      if(r.sus) flagged++; }
+    var sorted=ROWS.slice(0);
+    sorted.sort(function(a,b){ return b.score-a.score; });
+    for(i=0;i<sorted.length && top.length<3;i++){ if(sorted[i].score>0) top.push(sorted[i].name+" ("+sorted[i].score+")"); }
+    return {entries:ROWS.length, flagged:flagged, maxScore:maxScore, top:top};
+  }catch(e){ return null; }
+}
+
+function processPf(){
+  var inp=$("pfPath").value;
+  if(!requireHost()) return;
+  var outdir=$("outDir").value;
+  var inmode=$("inMode").value;   // "f" file, "d" directory
+  var fso=new ActiveXObject("Scripting.FileSystemObject");
+  if(inmode==="d"){
+    if(!inp||!fso.FolderExists(inp)){ setStatus("Directory not found: "+inp,"err"); return; }
+    if(!canListFolder(inp)){ setStatus("Access denied reading "+inp+" — check permissions (a live C:\\$Recycle.Bin needs an elevated run; point at a collected copy instead).","err"); return; }
+  }
+  else { if(!inp||!fso.FileExists(inp)){ setStatus("File not found: "+inp,"err"); return; } }
+  if(!outdir){ setStatus("Set an output directory","err"); return; }
+  if(!EXE||!fileExists(EXE)){ setStatus("RBCmd.exe not found — download it first","err"); return; }
+  var before=csvNameSet(outdir);
+  if(BUSY){ setStatus("An RBCmd run is already in progress — wait for it to finish.","err"); return; }
+  var flag=(inmode==="d")?"-d":"-f";
+  appendLog("Running: \""+EXE+"\" "+flag+" \""+inp+"\" --csv \""+outdir+"\" -q"
+    +"\nA console window shows progress; the app stays responsive and loads results automatically when done.");
+  BUSY=true; $("procBtn").disabled=true;
+  var binp=batEsc(inp), bout=batEsc(outdir);
+  var ctx=runBatAsync([
+    "set DOTNET_ROLL_FORWARD=Major",
+    'if not exist "'+bout+'" mkdir "'+bout+'"',
+    "echo RBCmd is processing:",
+    'echo   '+binp,
+    "echo Output: "+bout,
+    "echo This window closes automatically when finished.",
+    "echo.",
+    '"'+batEsc(EXE)+'" '+flag+' "'+binp+'" --csv "'+bout+'" -q > "__LOG__" 2>&1'
+  ], true);
+  ctx.onTick=function(s){ setStatus("RBCmd running… "+s+"s elapsed (app responsive; results load when done)","muted"); };
+  ctx.onTimeout=function(){ BUSY=false; $("procBtn").disabled=false; setStatus("RBCmd still running after 30 min — stopped watching. Check the output folder / console window.","err"); };
+  ctx.onDone=function(log){ BUSY=false; $("procBtn").disabled=false; processPfDone(log,outdir,before); };
+  setStatus("RBCmd starting…","muted");
+  window.setTimeout(function(){ pollDone(ctx); }, 1000);
+}
+function processPfDone(log,outdir,before){
+  appendLog("--- RBCmd output ---\n"+log);
+  LASTOUTDIR=outdir;
+  var all=listCsvFiles(outdir);
+  var fresh=[]; for(var i=0;i<all.length;i++){ if(!before[all[i].name]) fresh.push(all[i]); }
+  if(!fresh.length){
+    // no new output — diagnose why, leniently (load nothing but explain)
+    if(/denied|unauthorized/i.test(log))
+      setStatus("RBCmd was denied access to the input — a live C:\\$Recycle.Bin needs an elevated run; use a collected copy.","err");
+    else if(/Found 0 files/i.test(log) || /0 out of 0 files/i.test(log))
+      setStatus("RBCmd found 0 $I / INFO2 files in that input — check the 'Looking for files in …' line in the log matches the path (and that the bin actually holds $I* records; an emptied bin leaves none).","err");
+    else
+      setStatus("RBCmd produced no new CSV — no $I / INFO2 records found in the input, or every record failed to parse. See the log.","err");
+    populateProduced(all);
+    return;
+  }
+  var m0=log.match(/Processed (\d+) out of (\d+) files/i);
+  var procNote = m0 ? (" RBCmd processed "+m0[1]+" of "+m0[2]+" $I record(s).") : "";
+  writeRunInfo(outdir, $("pfPath").value, fresh);
+  PRODUCED=fresh;
+  populateProduced(fresh);
+  // auto-load the RBCmd output CSV (one row per $I deletion)
+  var main=null;
+  for(var j=0;j<fresh.length;j++){ if(/_RBCmd_Output\.csv$/i.test(fresh[j].name)){ if(!main||fresh[j].name>main.name) main=fresh[j]; } }
+  if(!main){ main=fresh[0]; for(var k=1;k<fresh.length;k++){ if(fresh[k].size>main.size) main=fresh[k]; } }
+  try{ $("producedSel").value=main.path; }catch(e){}
+  setStatus("Produced "+fresh.length+" CSV(s); loaded "+main.name+"."+procNote,"ok");
+  loadCsvFile(main.path);
+  patchRunInfoSummary(buildRunSummary());   // rows are scored now — add the triage headline to the runinfo entry
+}
+function csvNameSet(dir){ var o={}, l=listCsvFiles(dir); for(var i=0;i<l.length;i++) o[l[i].name]=true; return o; }
+function listCsvFiles(dir){
+  var fso=new ActiveXObject("Scripting.FileSystemObject"), out=[];
+  if(!fso.FolderExists(dir)) return out;
+  var e=new Enumerator(fso.GetFolder(dir).Files);
+  for(; !e.atEnd(); e.moveNext()){ var f=e.item(); if(/\.csv$/i.test(f.Name+"")) out.push({name:f.Name+"", path:f.Path+"", size:f.Size}); }
+  out.sort(function(a,b){ return a.name<b.name?1:(a.name>b.name?-1:0); });   // newest timestamp-prefix first
+  return out;
+}
+function fmtSize(n){ if(!n) return "0 B"; var u=["B","KB","MB","GB"], i=0; while(n>=1024&&i<u.length-1){n/=1024;i++;} return n.toFixed(i?1:0)+" "+u[i]; }
+function populateProduced(list){
+  var sel=$("producedSel"); sel.innerHTML="";
+  for(var i=0;i<list.length;i++){
+    var lab=list[i].name+"  ("+fmtSize(list[i].size)+")";
+    if(/_RBCmd_Output\.csv$/i.test(list[i].name)) lab+="  —  one row per $I deletion";
+    var o=document.createElement("option"); o.value=list[i].path; o.text=lab; sel.add(o);
+  }
+  showEl("producedRow", list.length>0);
+}
+function openDir(){ var d=$("outDir").value; if(!d){ setStatus("No output directory set","err"); return; }
+  try{ new ActiveXObject("WScript.Shell").Run('explorer.exe "'+d+'"',1,false); }catch(e){ setStatus("Could not open folder: "+e.message,"err"); } }
+
+/* ---------- CSV parser (RFC4180) — line-split hybrid: native split for the bulk,
+   careful field parsing only for lines containing quotes; merges rows split across
+   newlines inside quoted fields. Orders of magnitude faster than char-by-char in MSHTML. */
+function countQuotes(s){ var c=0, idx=-1; while((idx=s.indexOf('"',idx+1))>=0) c++; return c; }
+function parseCSVLine(line){
+  if(line.indexOf('"')<0) return line.split(",");   // fast path: no quotes → plain split
+  var out=[], field="", q=false, i=0, n=line.length;
+  while(i<n){ var c=line.charAt(i);
+    if(q){ if(c==='"'){ if(line.charAt(i+1)==='"'){ field+='"'; i+=2; continue; } q=false; i++; continue; } field+=c; i++; continue; }
+    if(c==='"'){ q=true; i++; continue; }
+    if(c===','){ out.push(field); field=""; i++; continue; }
+    field+=c; i++;
+  }
+  out.push(field); return out;
+}
+function parseCSV(text){
+  if(text.charCodeAt(0)===0xFEFF) text=text.substring(1);
+  var lines=text.split("\n"), rows=[], i=0, n=lines.length;
+  while(i<n){
+    var line=lines[i]; i++;
+    // a quoted field may contain a newline → merge continuation lines until quotes balance
+    var qc=countQuotes(line);
+    while((qc%2)===1 && i<n){ line+="\n"+lines[i]; qc+=countQuotes(lines[i]); i++; }
+    if(line.charAt(line.length-1)==='\r') line=line.substring(0,line.length-1);
+    if(line==="") continue;
+    rows.push(parseCSVLine(line));
+  }
+  return rows;
+}
+
+/* ---------- ingest dispatch ---------- */
+function loadCsvFile(path){
+  try{
+    var text=readUtf8(path);
+    var raw=parseCSV(text);
+    if(!raw||!raw.length){ setStatus("Empty / unparseable CSV","err"); return; }
+    var idx={}, head=raw[0];
+    for(var h=0;h<head.length;h++) idx[trimStr(head[h])]=h;
+    if(("SourceName" in idx) && ("FileName" in idx) && ("DeletedOn" in idx))
+      ingestPf(raw, idx, baseName(path));
+    else
+      ingestGeneric(raw, head, baseName(path));
+  }catch(e){ setStatus("Could not read CSV: "+e.message,"err"); }
+}
+function cell(rw,i){ return (i>=0&&i<rw.length)?rw[i]:""; }
+function numv(v){ var x=parseFloat(v); return isFinite(x)?x:0; }
+
+/* ---------- recycle-bin ($I) ingest (spec §Ingest — columns VERIFIED 2026-07-07) ---------- */
+function parseSid(src){
+  // the per-user bin folder in SourceName is the SID segment (S-1-5-21-…). INFO2/XP has none.
+  var parts=String(src).split("\\");
+  for(var i=0;i<parts.length;i++){ if(/^S-1-[0-9]+(-[0-9]+)+$/i.test(parts[i])) return parts[i]; }
+  var m=String(src).match(/S-1-[0-9]+(?:-[0-9]+)+/i); if(m) return m[0];
+  return "(pre-Vista)";
+}
+function extOf(name){ var m=String(name).match(/\.([A-Za-z0-9]+)$/); return m?m[1].toLowerCase():""; }
+function ingestPf(raw, idx, srcLabel){
+  function gi(n){ return (n in idx)?idx[n]:-1; }
+  var iSrc=gi("SourceName"), iType=gi("FileType"), iName=gi("FileName"), iSize=gi("FileSize"), iDel=gi("DeletedOn");
+  ROWS=[];
+  var sids={};
+  for(var r=1;r<raw.length;r++){
+    var rw=raw[r]; if(rw.length<2) continue;
+    var src=trimStr(cell(rw,iSrc)), origPath=cell(rw,iName);
+    if(!src && !origPath) continue;
+    var del=cell(rw,iDel);
+    var origName=baseName(origPath);
+    var sid=parseSid(src);
+    var rec={
+      source:src, fileType:cell(rw,iType),
+      origPath:origPath, origName:origName, ext:extOf(origName),
+      deletedOn:del, sizeBytes:numv(cell(rw,iSize)), sid:sid,
+      name:(origName||origPath||"(unknown)"),
+      ms:msOf(del), day:dayOf(del),
+      tags:[], reasons:[], score:0, sus:false
+    };
+    rec.origPathL=String(origPath).toLowerCase();
+    rec.origNameL=String(origName).toLowerCase();
+    rec.sidL=String(sid).toLowerCase();
+    rec.blob=(origPath+" "+origName+" "+sid+" "+src+" "+rec.fileType).toLowerCase();
+    if(sid) sids[rec.sidL]=1;
+    ROWS.push(rec);
+  }
+  if(!ROWS.length){ ingestGeneric(raw, raw[0], srcLabel); return; }
+  var sidN=0,sk; for(sk in sids){ if(sids.hasOwnProperty(sk)) sidN++; }
+  rescoreAll();
+  setMode("rbin");
+  populateSourceFilter([]);
+  $("results").className="";
+  $("srcpill").innerHTML=nf(ROWS.length)+" deletions &middot; "+nf(sidN)+" user(s) &middot; "+esc(srcLabel);
+  QUERY=""; $("q").value=""; DFROM=0; DTO=0; $("dfrom").value=""; $("dto").value="";
+  CURCAT="all"; highlightCat();
+  SORTKEY=0; SORTDIR=1; TSORTKEY=0; TSORTDIR=-1; CSORTKEY=1; CSORTDIR=-1;
+  setView("del", true);
+  closeDetail();
+  setStatus("Loaded "+nf(ROWS.length)+" deletion records from "+nf(sidN)+" user bin(s)","ok");
+  render();
+}
+
+/* ---------- suspicion scoring (spec §Scoring, B1–B5; sus = score >= 3) ---------- */
+function isUserPath(pL){
+  if(!pL) return false;
+  if(pL.indexOf("\\appdata\\")>=0) return true;
+  if(pL.indexOf("\\temp\\")>=0) return true;
+  if(pL.indexOf("\\users\\public\\")>=0) return true;
+  if(pL.indexOf("\\downloads\\")>=0) return true;
+  if(pL.indexOf("\\perflogs\\")>=0) return true;
+  // ProgramData counts only when NON-vendor (Microsoft's own subtree is routine)
+  if(pL.indexOf("\\programdata\\")>=0 && pL.indexOf("\\programdata\\microsoft\\")<0) return true;
+  return false;
+}
+function isSysPath(pL){ if(!pL) return false; return pL.indexOf("\\windows\\")>=0 || pL.indexOf("\\program files")>=0; }
+function rescoreAll(){
+  for(var i=0;i<ROWS.length;i++){ scoreRec(ROWS[i]); }
+}
+function scoreRec(rec){
+  var tags=[], reasons=[], score=0;
+  // B1: IOC / keyword hit on original path / name / SID / source $I path (whole-record blob)
+  if(IOCS.length){
+    var hits=[], t;
+    for(t=0;t<IOCS.length;t++){ var term=IOCS[t];
+      if(rec.blob.indexOf(term)>=0){ hits.push(term); if(hits.length>=3) break; } }
+    if(hits.length){ score+=3; tags.push("IOC"); reasons.push("IOC/keyword hit: "+hits.join(", ")); }
+  }
+  // B2: deleted executable / script
+  if(EXEC_EXT[rec.ext]){ score+=2; tags.push("EXEC"); reasons.push("Deleted executable/script (."+rec.ext+")"); }
+  // B3: deleted archive — staging-cleanup signal (exfil bundle removed after upload)
+  if(ARCH_EXT[rec.ext]){ score+=2; tags.push("ARCHIVE"); reasons.push("Deleted archive (."+rec.ext+") — possible staging-cleanup"); }
+  // B4: original path in a user-writable / suspicious directory
+  if(isUserPath(rec.origPathL)){ score+=1; tags.push("USERPATH"); reasons.push("Original path is in a user-writable / suspicious directory"); }
+  // B5: original path under \Windows\ or \Program Files (unusual to delete from a system dir)
+  if(isSysPath(rec.origPathL)){ score+=1; tags.push("SYSPATH"); reasons.push("Original path is under \\Windows\\ or \\Program Files (unusual to delete from a system directory)"); }
+  rec.tags=tags; rec.reasons=reasons; rec.score=score; rec.sus=(score>=3);
+}
+
+/* ---------- aggregates / overview ---------- */
+function topList(obj,n){ var a=[],k; for(k in obj){ if(obj.hasOwnProperty(k)) a.push([k,obj[k]]); }
+  a.sort(function(x,y){ return y[1]-x[1]; }); return a.slice(0,n); }
+function stat(n,l){ return '<span class="stat"><span class="n">'+esc(n)+'</span><span class="l">'+esc(l)+'</span></span>'; }
+function bar(label,frac,val,q){
+  var lc=q?' lnk" data-q="'+esc(q):'';
+  return '<div class="brow"><span class="blab'+lc+'" title="'+esc(label)+'">'+esc(label)+'</span>'
+    +'<span class="btrack"><span class="bfill" style="width:'+(frac*100).toFixed(1)+'%"></span></span>'
+    +'<span class="bval">'+esc(val)+'</span></div>';
+}
+function listRow(label,val,q,cls){
+  var lc=q?' lnk" data-q="'+esc(q):'';
+  return '<div class="brow"><span class="blab'+lc+'" title="'+esc(label)+'" style="width:52%">'+esc(label)+'</span>'
+    +'<span class="bval" style="width:44%;'+(cls||"")+'">'+esc(val)+'</span></div>';
+}
+function fmtShortTs(s){ var m=String(s).match(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})/); return m?(m[1]+" "+m[2]):String(s); }
+function renderPfAgg(rows){
+  var i, r;
+  var sids={}, susN=0, iocN=0, execN=0, archN=0, totBytes=0, minMs=0, maxMs=0;
+  for(i=0;i<rows.length;i++){ r=rows[i];
+    sids[r.sid]=(sids[r.sid]||0)+1;
+    totBytes+=r.sizeBytes;
+    if(r.sus) susN++;
+    if(hasTag(r,"IOC")) iocN++;
+    if(hasTag(r,"EXEC")) execN++;
+    if(hasTag(r,"ARCHIVE")) archN++;
+    if(r.ms){ if(!minMs||r.ms<minMs) minMs=r.ms; if(r.ms>maxMs) maxMs=r.ms; }
+  }
+  var distinct=0,k; for(k in sids){ if(sids.hasOwnProperty(k)) distinct++; }
+  var rng=(minMs? (fmtShortTs(msToTs(minMs))+" → "+fmtShortTs(msToTs(maxMs))) : "—");
+  $("statbar").innerHTML=
+    stat(nf(rows.length),"deletions")+stat(nf(distinct),"users (SIDs)")+stat(fmtSize(totBytes),"total size")+
+    stat(nf(susN),"suspicious")+(IOCS.length?stat(nf(iocN),"IOC hits"):"")+
+    (execN?stat(nf(execN),"executables"):"")+(archN?stat(nf(archN),"archives"):"")+
+    '<span class="stat" style="min-width:260px"><span class="n" style="font-size:12px">'+esc(rng)+'</span><span class="l">DeletedOn range (UTC)</span></span>';
+  // col 1: top users by deletion count
+  var top=topList(sids,12), h="", max=top.length?top[0][1]:1;
+  for(i=0;i<top.length;i++){ h+=bar(top[i][0], max?top[i][1]/max:0, nf(top[i][1]), top[i][0]); }
+  $("topExes").innerHTML=h||'<span class="muted">none</span>';
+  // col 2: most recent deletions (DeletedOn)
+  var byNew=rows.slice(0); byNew.sort(function(a,b){ return b.ms-a.ms; });
+  h=""; for(i=0;i<byNew.length&&i<12;i++){ r=byNew[i]; h+=listRow(r.origName, fmtShortTs(r.deletedOn), r.origName); }
+  $("topNew").innerHTML=h||'<span class="muted">none</span>';
+  // col 3: suspicious, score-ranked
+  var sus=[]; for(i=0;i<rows.length;i++){ if(rows[i].sus) sus.push(rows[i]); }
+  sus.sort(function(a,b){ return b.score-a.score || b.ms-a.ms; });
+  h=""; for(i=0;i<sus.length&&i<12;i++){ r=sus[i];
+    h+=listRow(r.origName+"  ["+r.tags.join(",")+"]", "score "+r.score, r.origName, "color:#ff6b6b"); }
+  $("topSus").innerHTML=h||'<span class="ok">No suspicious deletions</span>';
+}
+function msToTs(ms){ var d=new Date(ms); function p(x){return (x<10?"0":"")+x;}
+  return d.getUTCFullYear()+"-"+p(d.getUTCMonth()+1)+"-"+p(d.getUTCDate())+" "+p(d.getUTCHours())+":"+p(d.getUTCMinutes())+":"+p(d.getUTCSeconds()); }
+function hasTag(r,t){ for(var i=0;i<r.tags.length;i++){ if(r.tags[i]===t) return true; } return false; }
+
+/* ---------- deletions table ---------- */
+var COLS=[
+  {h:"Tags", sk:function(r){return -r.score;}, cell:function(r){return '<td class="first">'+tagHtml(r)+'</td>';}},
+  {h:"Deleted (UTC)", sk:function(r){return r.ms;}, cell:function(r){return '<td class="mono">'+esc(r.deletedOn)+'</td>';}},
+  {h:"Original path", sk:function(r){return r.origPathL;}, cell:function(r){return '<td class="mono" title="'+esc(r.origPath)+'">'+esc(r.origPath)+'</td>';}},
+  {h:"Size", sk:function(r){return r.sizeBytes;}, cell:function(r){return '<td class="mono" style="text-align:right" title="'+esc(fmtSize(r.sizeBytes))+'">'+esc(nf(r.sizeBytes))+'</td>';}},
+  {h:"SID", sk:function(r){return r.sidL;}, cell:function(r){return '<td class="mono muted lnk" data-q="'+esc(r.sid)+'" title="'+esc(r.sid)+' — click to filter to this user">'+esc(r.sid)+'</td>';}},
+  {h:"Source $I", sk:function(r){return String(r.source).toLowerCase();}, cell:function(r){return '<td class="mono muted" title="'+esc(r.source)+'">'+esc(shortPathN(r.source,2))+'</td>';}}
+];
+function tagHtml(r){
+  var t="",i;
+  if(r.sus) t+='<span class="tag sus" title="'+esc(r.reasons.join("; "))+'">SUS '+r.score+'</span>';
+  for(i=0;i<r.tags.length;i++){ var g=r.tags[i], cls="gen";
+    if(g==="USERPATH") cls="usr"; else if(g==="EXEC") cls="lol"; else if(g==="ARCHIVE") cls="rare";
+    else if(g==="IOC") cls="ioc"; else if(g==="SYSPATH") cls="gen";
+    t+='<span class="tag '+cls+'" title="'+esc(r.reasons.join("; "))+'">'+esc(g)+'</span>'; }
+  return t;
+}
+function filteredPf(){
+  var out=[];
+  for(var i=0;i<ROWS.length;i++){
+    var r=ROWS[i];
+    if(CURCAT==="sus"&&!r.sus) continue;
+    if(CURCAT==="ioc"&&!hasTag(r,"IOC")) continue;
+    if(CURCAT==="exec"&&!hasTag(r,"EXEC")) continue;
+    if(CURCAT==="archive"&&!hasTag(r,"ARCHIVE")) continue;
+    if(CURCAT==="userpath"&&!hasTag(r,"USERPATH")) continue;
+    if(CURCAT==="syspath"&&!hasTag(r,"SYSPATH")) continue;
+    if(DFROM&&(!r.day||r.day<DFROM)) continue;
+    if(DTO&&(!r.day||r.day>DTO)) continue;
+    if(QUERY){ if(r.blob.indexOf(QUERY)<0) continue; }
+    out.push(r);
+  }
+  return out;
+}
+function updateCatCounts(){
+  var c={all:ROWS.length,sus:0,ioc:0,exec:0,archive:0,userpath:0,syspath:0};
+  for(var i=0;i<ROWS.length;i++){ var r=ROWS[i];
+    if(r.sus)c.sus++; if(hasTag(r,"IOC"))c.ioc++; if(hasTag(r,"EXEC"))c.exec++;
+    if(hasTag(r,"ARCHIVE"))c.archive++; if(hasTag(r,"USERPATH"))c.userpath++; if(hasTag(r,"SYSPATH"))c.syspath++; }
+  var names={all:"All",sus:"Suspicious",ioc:"IOC hits",exec:"Executables",archive:"Archives",userpath:"User-path",syspath:"System-path"};
+  var bs=$("pfCats").getElementsByTagName("button");
+  for(var j=0;j<bs.length;j++){ var k=bs[j].getAttribute("data-cat");
+    if(k) bs[j].innerHTML=names[k]+" ("+nf(c[k])+")"; }
+}
+function highlightCat(){
+  var bs=$("pfCats").getElementsByTagName("button");
+  for(var j=0;j<bs.length;j++){ if(bs[j].getAttribute("data-cat")) bs[j].className=(bs[j].getAttribute("data-cat")===CURCAT)?"btn on":"btn"; }
+}
+function setView(v, quiet){
+  VIEW=v;
+  $("vDel").className=(v==="del")?"btn on":"btn";
+  $("vTime").className=(v==="time")?"btn on":"btn";
+  $("vUsers").className=(v==="users")?"btn on":"btn";
+  $("tableTitle").innerHTML=(v==="time")?"Deletion timeline (by DeletedOn)":((v==="users")?"Users (grouped per SID)":"Recycle-bin deletions");
+  if(!quiet) render();
+}
+function render(){
+  if(MODE==="generic"){ renderGeneric(); return; }
+  if(VIEW==="time"){ renderTime(); return; }
+  if(VIEW==="users"){ renderUsers(); return; }
+  if(!ROWS.length) return;
+  var rows=filteredPf();
+  renderPfAgg(rows);
+  updateCatCounts();
+  var sk=COLS[SORTKEY].sk, dir=SORTDIR;
+  rows.sort(function(a,b){ var x=sk(a),y=sk(b);
+    if(typeof x==="number"&&typeof y==="number") return (x-y)*dir;
+    x=String(x); y=String(y); return x<y?-dir:(x>y?dir:0); });
+  var shown=rows.length>MAXROWS?MAXROWS:rows.length;
+  var html="<thead><tr>";
+  for(var c=0;c<COLS.length;c++){
+    var arrow=(SORTKEY===c)?(SORTDIR>0?" ▲":" ▼"):"";
+    html+='<th data-k="'+c+'">'+esc(COLS[c].h)+arrow+'</th>';
+  }
+  html+="</tr></thead><tbody>";
+  for(var i=0;i<shown;i++){
+    var r=rows[i];
+    html+='<tr data-i="'+i+'"'+(r.sus?' class="sus"':'')+' style="cursor:pointer">';
+    for(var k=0;k<COLS.length;k++){ html+=COLS[k].cell(r); }
+    html+="</tr>";
+  }
+  html+="</tbody>";
+  $("tbl").innerHTML=html;
+  $("count").innerHTML=nf(rows.length)+" rows"+(shown<rows.length?(" (showing "+nf(shown)+")"):"");
+  wireHeaders();
+  setupColResize();
+  applyFreeze();
+  window.__viewRows=rows;
+}
+function wireHeaders(){
+  var ths=$("tbl").getElementsByTagName("th");
+  for(var i=0;i<ths.length;i++){ ths[i].onclick=function(e){
+    e=e||window.event; var t=e.target||e.srcElement;
+    if(t && /\bcgrip\b/.test(t.className+"")) return;   // resize-grip interactions must not sort
+    var k=parseInt(this.getAttribute("data-k"),10);
+    if(SORTKEY===k) SORTDIR*=-1; else { SORTKEY=k; SORTDIR=1; }
+    render();
+  }; }
+}
+function applyFreeze(){
+  var sc=$("tblScroll"); if(!sc) return;
+  var ths=$("tbl").getElementsByTagName("th"); var y=sc.scrollTop;
+  for(var i=0;i<ths.length;i++){ ths[i].style.top=y+"px"; }
+}
+
+/* ---------- settings sidecar (currently: per-view column widths) ----------
+   Tiny JSON next to the .hta; silently a no-op where the folder is unwritable. */
+var SETTINGS={};
+function settingsPath(){ var d=htaFolder(); return d?(d+"\\RBCmd-Wrapper.settings.json"):""; }
+function loadSettings(){
+  try{ var p=settingsPath();
+    if(p && fileExists(p)){ var o=JSON.parse(readUtf8(p)); if(o && typeof o==="object") SETTINGS=o; }
+  }catch(e){ SETTINGS={}; }
+  if(!SETTINGS) SETTINGS={};
+  if(SETTINGS.colw && typeof SETTINGS.colw==="object") COLW=SETTINGS.colw;
+}
+function saveSettings(){ try{ var p=settingsPath(); if(p) writeUtf8(p, JSON.stringify(SETTINGS)); }catch(e){} }
+
+/* ---------- resizable columns (ported from DFIR-Artifact-Finder v0.2.1) ----------
+   Drag a header's right edge to resize; double-click the edge to reset the view's widths.
+   Widths are stored per view ({del:[..], time:[..], users:[..], generic:[..]}) because each
+   view has its own column set; a stored array whose length no longer matches the header count
+   is ignored (auto-reset for that view). */
+var COLW={};      // per-view px widths once the user resizes (persisted in SETTINGS.colw)
+var DRAG=null;    // active column-drag state
+function colwKey(){ return (MODE==="generic")?"generic":((VIEW==="time")?"time":((VIEW==="users")?"users":"del")); }
+function curZoom(){
+  try{ var el=$("content");
+    var z=parseFloat(el.style.zoom||(el.currentStyle&&el.currentStyle.zoom)||"");
+    if(!z && window.getComputedStyle) z=parseFloat(getComputedStyle(el).zoom);
+    return (z&&z>0)?z:1;
+  }catch(e){ return 1; }
+}
+function setupColResize(){
+  var tbl=$("tbl"); if(!tbl) return;
+  var ths=tbl.getElementsByTagName("th"); if(!ths.length) return;
+  var key=colwKey(), w=COLW[key];
+  if(w && w.length===ths.length){
+    tbl.style.tableLayout="fixed"; tbl.style.width="auto";
+    for(var j=0;j<ths.length;j++) ths[j].style.width=w[j]+"px";
+  } else {
+    tbl.style.tableLayout=""; tbl.style.width="";   // the one table is shared by all views — undo a previous view's fixed layout
+  }
+  for(var i=0;i<ths.length;i++){
+    var g=document.createElement("div");
+    g.className="cgrip"; g.setAttribute("data-ci",String(i));
+    g.title="Drag to resize column — double-click to reset all widths";
+    g.onmousedown=gripDown; g.ondblclick=gripReset;
+    ths[i].appendChild(g);
+  }
+}
+function gripDown(e){
+  e=e||window.event;
+  var ci=parseInt(this.getAttribute("data-ci"),10);
+  var tbl=$("tbl"), ths=tbl.getElementsByTagName("th");
+  if(isNaN(ci)||ci<0||ci>=ths.length) return false;
+  var key=colwKey(), w=COLW[key];
+  if(!w || w.length!==ths.length){          // first drag: freeze the browser's current widths
+    w=[]; for(var i=0;i<ths.length;i++) w.push(ths[i].offsetWidth);
+    COLW[key]=w;
+    tbl.style.tableLayout="fixed"; tbl.style.width="auto";
+    for(var j=0;j<ths.length;j++) ths[j].style.width=w[j]+"px";
+  }
+  DRAG={key:key, ci:ci, x:(e.clientX||0), w:w[ci], th:ths[ci], z:curZoom()};
+  document.onmousemove=gripMove; document.onmouseup=gripUp;
+  document.onselectstart=function(){ return false; };
+  if(e.preventDefault) e.preventDefault(); e.returnValue=false;
+  if(e.stopPropagation) e.stopPropagation(); e.cancelBubble=true;
+  return false;
+}
+function gripMove(e){
+  e=e||window.event; if(!DRAG) return false;
+  var w=Math.round(DRAG.w+((e.clientX||0)-DRAG.x)/DRAG.z);
+  if(w<40) w=40; if(w>1600) w=1600;
+  COLW[DRAG.key][DRAG.ci]=w; DRAG.th.style.width=w+"px";
+  return false;
+}
+function gripUp(){
+  document.onmousemove=null; document.onmouseup=null; document.onselectstart=null;
+  if(DRAG){ DRAG=null; SETTINGS.colw=COLW; try{ saveSettings(); }catch(e){} }
+}
+function gripReset(e){
+  e=e||window.event;
+  document.onmousemove=null; document.onmouseup=null; document.onselectstart=null; DRAG=null;
+  COLW[colwKey()]=null; SETTINGS.colw=COLW; try{ saveSettings(); }catch(er){}
+  var tbl=$("tbl"); if(tbl){ tbl.style.tableLayout=""; tbl.style.width=""; }
+  render();
+  setStatus("Column widths reset","ok");
+  if(e){ if(e.stopPropagation) e.stopPropagation(); e.cancelBubble=true; }
+  return false;
+}
+
+/* ---------- timeline view (same deletions sorted by DeletedOn) ---------- */
+var TCOLS=[
+  {h:"Deleted (UTC)", sk:function(r){return r.ms;}, cell:function(r){return '<td class="mono">'+esc(r.deletedOn)+'</td>';}},
+  {h:"Tags", sk:function(r){return -r.score;}, cell:function(r){return '<td class="first">'+tagHtml(r)+'</td>';}},
+  {h:"Original path", sk:function(r){return r.origPathL;}, cell:function(r){return '<td class="mono" title="'+esc(r.origPath)+'">'+esc(r.origPath)+'</td>';}},
+  {h:"Size", sk:function(r){return r.sizeBytes;}, cell:function(r){return '<td class="mono" style="text-align:right" title="'+esc(fmtSize(r.sizeBytes))+'">'+esc(nf(r.sizeBytes))+'</td>';}},
+  {h:"SID", sk:function(r){return r.sidL;}, cell:function(r){return '<td class="mono muted lnk" data-q="'+esc(r.sid)+'" title="'+esc(r.sid)+'">'+esc(r.sid)+'</td>';}},
+  {h:"Source $I", sk:function(r){return String(r.source).toLowerCase();}, cell:function(r){return '<td class="mono muted" title="'+esc(r.source)+'">'+esc(shortPathN(r.source,2))+'</td>';}}
+];
+function renderTime(){
+  if(!ROWS.length) return;
+  var rows=filteredPf();
+  renderPfAgg(rows);
+  updateCatCounts();
+  var sk=TCOLS[TSORTKEY].sk, dir=TSORTDIR;
+  rows=rows.slice(0);
+  rows.sort(function(a,b){ var x=sk(a),y=sk(b);
+    if(typeof x==="number"&&typeof y==="number") return (x-y)*dir;
+    x=String(x); y=String(y); return x<y?-dir:(x>y?dir:0); });
+  var shown=rows.length>MAXROWS?MAXROWS:rows.length;
+  var html="<thead><tr>";
+  for(var c=0;c<TCOLS.length;c++){
+    var arrow=(TSORTKEY===c)?(TSORTDIR>0?" ▲":" ▼"):"";
+    html+='<th data-k="'+c+'">'+esc(TCOLS[c].h)+arrow+'</th>';
+  }
+  html+="</tr></thead><tbody>";
+  for(var i=0;i<shown;i++){
+    var r=rows[i];
+    html+='<tr data-i="'+i+'"'+(r.sus?' class="sus"':'')+' style="cursor:pointer">';
+    for(var k=0;k<TCOLS.length;k++){ html+=TCOLS[k].cell(r); }
+    html+="</tr>";
+  }
+  html+="</tbody>";
+  $("tbl").innerHTML=html;
+  $("count").innerHTML=nf(rows.length)+" deletions"+(shown<rows.length?(" (showing "+nf(shown)+")"):"");
+  var ths=$("tbl").getElementsByTagName("th");
+  for(var j=0;j<ths.length;j++){ ths[j].onclick=function(e){
+    e=e||window.event; var t=e.target||e.srcElement;
+    if(t && /\bcgrip\b/.test(t.className+"")) return;   // resize-grip interactions must not sort
+    var kk=parseInt(this.getAttribute("data-k"),10);
+    if(TSORTKEY===kk) TSORTDIR*=-1; else { TSORTKEY=kk; TSORTDIR=1; }
+    renderTime();
+  }; }
+  setupColResize();
+  applyFreeze();
+  window.__viewRows=rows;
+}
+
+/* ---------- users view (grouped per SID; collapse-group pattern) ---------- */
+var CCOLS=[
+  {h:"SID (user)", sk:function(g){return g.sidL;}},
+  {h:"Deletions", sk:function(g){return g.n;}},
+  {h:"Total bytes", sk:function(g){return g.bytes;}},
+  {h:"Newest deletion (UTC)", sk:function(g){return g.maxMs;}},
+  {h:"Suspicious", sk:function(g){return g.sus;}},
+  {h:"Max score", sk:function(g){return g.maxScore;}}
+];
+function buildSidGroups(rows){
+  var map={}, out=[], i;
+  for(i=0;i<rows.length;i++){ var r=rows[i];
+    var k=r.sidL;
+    var g=map[k];
+    if(!g){ g=map[k]={sid:r.sid, sidL:r.sidL, n:0, bytes:0, sus:0, maxScore:0, maxMs:0, newest:""}; out.push(g); }
+    g.n++;
+    g.bytes+=r.sizeBytes;
+    if(r.sus) g.sus++;
+    if(r.score>g.maxScore) g.maxScore=r.score;
+    if(r.ms>g.maxMs){ g.maxMs=r.ms; g.newest=r.deletedOn; }
+  }
+  return out;
+}
+function renderUsers(){
+  if(!ROWS.length) return;
+  var rows=filteredPf();
+  renderPfAgg(rows);
+  updateCatCounts();
+  var groups=buildSidGroups(rows);
+  var sk=CCOLS[CSORTKEY].sk, dir=CSORTDIR;
+  groups.sort(function(a,b){ var x=sk(a),y=sk(b);
+    if(typeof x==="number"&&typeof y==="number") return (x-y)*dir;
+    x=String(x); y=String(y); return x<y?-dir:(x>y?dir:0); });
+  var html="<thead><tr>";
+  for(var c=0;c<CCOLS.length;c++){
+    var arrow=(CSORTKEY===c)?(CSORTDIR>0?" ▲":" ▼"):"";
+    html+='<th data-k="'+c+'">'+esc(CCOLS[c].h)+arrow+'</th>';
+  }
+  html+="</tr></thead><tbody>";
+  for(var i=0;i<groups.length;i++){
+    var g=groups[i];
+    html+='<tr'+(g.sus?' class="sus"':'')+' style="cursor:pointer" title="Click to filter the Deletions view to this user">';
+    html+='<td class="first mono" data-catq="'+esc(g.sid)+'">'+esc(g.sid)+'</td>';
+    html+='<td class="mono" data-catq="'+esc(g.sid)+'" style="text-align:right">'+esc(nf(g.n))+'</td>';
+    html+='<td class="mono" data-catq="'+esc(g.sid)+'" style="text-align:right" title="'+esc(fmtSize(g.bytes))+'">'+esc(nf(g.bytes))+'</td>';
+    html+='<td class="mono" data-catq="'+esc(g.sid)+'">'+esc(fmtShortTs(g.newest))+'</td>';
+    html+='<td class="mono" data-catq="'+esc(g.sid)+'" style="text-align:right'+(g.sus?';color:#ff6b6b':'')+'">'+esc(nf(g.sus))+'</td>';
+    html+='<td class="mono" data-catq="'+esc(g.sid)+'" style="text-align:right">'+esc(g.maxScore)+'</td>';
+    html+="</tr>";
+  }
+  html+="</tbody>";
+  $("tbl").innerHTML=html;
+  $("count").innerHTML=nf(groups.length)+" users ("+nf(rows.length)+" deletions)";
+  var ths=$("tbl").getElementsByTagName("th");
+  for(var j=0;j<ths.length;j++){ ths[j].onclick=function(e){
+    e=e||window.event; var t=e.target||e.srcElement;
+    if(t && /\bcgrip\b/.test(t.className+"")) return;   // resize-grip interactions must not sort
+    var kk=parseInt(this.getAttribute("data-k"),10);
+    if(CSORTKEY===kk) CSORTDIR*=-1; else { CSORTKEY=kk; CSORTDIR=1; }
+    renderUsers();
+  }; }
+  setupColResize();
+  applyFreeze();
+  window.__viewRows=groups;
+}
+
+/* ---------- detail pane (all $I columns + derived SID/ext) ---------- */
+function hlClassFor(entryL){
+  for(var t=0;t<IOCS.length;t++){ if(entryL.indexOf(IOCS[t])>=0) return "hl-ioc"; }
+  if(isUserPath(entryL)) return "hl-user";
+  return "";
+}
+function detRow(label,val,mono){
+  if(val==null||String(val)==="") return "";
+  var vL=String(val).toLowerCase(), cls=hlClassFor(vL);
+  return '<div style="margin:2px 0"><span class="muted" style="display:inline-block;width:130px;vertical-align:top;font-size:11px">'+esc(label)+'</span>'
+    +'<span class="'+(mono?"mono ":"")+(cls||"")+'" style="font-size:12px;word-wrap:break-word">'+esc(val)+'</span></div>';
+}
+function renderDetail(rec){
+  DETREC=rec;
+  var h='<div class="mono" style="font-size:14px;margin-bottom:6px"><b>'+esc(rec.origName)+'</b></div>';
+  h+='<div style="margin-bottom:6px">'+tagHtml(rec)+'</div>';
+  if(rec.reasons.length){ h+='<div style="font-size:12px;color:#ff9b9b;margin-bottom:6px">';
+    for(var q=0;q<rec.reasons.length;q++) h+="&bull; "+esc(rec.reasons[q])+"<br>"; h+='</div>'; }
+  h+='<h3>Record</h3><div style="word-wrap:break-word">';
+  h+=detRow("Original name",rec.origName,true);
+  h+=detRow("Original path",rec.origPath,true);
+  h+=detRow("Extension",rec.ext,true);
+  h+=detRow("Deleted (UTC)",rec.deletedOn,true);
+  h+=detRow("Size",nf(rec.sizeBytes)+" bytes ("+fmtSize(rec.sizeBytes)+")",true);
+  h+=detRow("SID (user)",rec.sid,true);
+  h+=detRow("File type",rec.fileType,true);
+  h+=detRow("Source $I",rec.source,true);
+  h+='</div>';
+  h+='<div class="muted" style="font-size:11px;margin-top:6px">SID is shown raw &mdash; resolve it to a username offline via the SAM / SOFTWARE hive. A surviving $I proves the deletion even when the matching $R content file is absent.</div>';
+  $("detBody").innerHTML=h;
+  showEl("detailCard",true);
+}
+function closeDetail(){ DETREC=null; showEl("detailCard",false); $("detBody").innerHTML=""; }
+function copyDetail(){
+  if(!DETREC){ setStatus("No record open","err"); return; }
+  var r=DETREC, out=[];
+  out.push(r.origName+"  —  "+r.origPath);
+  out.push("tags: "+(r.tags.length?r.tags.join(", "):"none")+"  score "+r.score);
+  for(var q=0;q<r.reasons.length;q++) out.push("  - "+r.reasons[q]);
+  out.push("deleted "+r.deletedOn+" (UTC)  size "+nf(r.sizeBytes)+" bytes ("+fmtSize(r.sizeBytes)+")");
+  out.push("SID "+r.sid+(r.fileType?("  type "+r.fileType):""));
+  out.push("source $I: "+r.source);
+  try{ window.clipboardData.setData("Text", out.join("\r\n")); setStatus("Record copied to clipboard","ok"); }
+  catch(e){ setStatus("Copy failed: "+e.message,"err"); }
+}
+
+/* ---------- generic grid (non-RBCmd CSVs) ---------- */
+function isNumStr(s){ s=trimStr(String(s)); return s!=="" && /^-?\d+(\.\d+)?$/.test(s); }
+function ingestGeneric(raw, head, srcLabel){
+  setMode("generic");
+  GHEAD=head; GROWS=[];
+  for(var i=1;i<raw.length;i++){ var rw=raw[i]; if(rw.length>=1 && !(rw.length===1 && rw[0]==="")) GROWS.push(rw); }
+  GSRC=srcLabel;
+  GSRCIDX=-1; for(var c=0;c<head.length;c++){ if(/^SourceFile(name)?$/i.test(trimStr(head[c]))){ GSRCIDX=c; break; } }
+  if(GSRCIDX>=0){ var sv=[]; for(var s=0;s<GROWS.length;s++) sv.push(GSRCIDX<GROWS[s].length?GROWS[s][GSRCIDX]:""); populateSourceFilter(distinctVals(sv)); }
+  else populateSourceFilter([]);
+  $("results").className="";
+  $("srcpill").innerHTML=nf(GROWS.length)+" rows &middot; "+esc(srcLabel)+" ("+GHEAD.length+" cols)";
+  QUERY=""; $("q").value=""; GSORTKEY=-1;
+  closeDetail();
+  setStatus("Loaded "+nf(GROWS.length)+" rows (generic table view)","ok");
+  renderGeneric();
+}
+function renderGeneric(){
+  if(!GHEAD) return;
+  var q=QUERY, rows=[];
+  for(var i=0;i<GROWS.length;i++){ var rw=GROWS[i];
+    if(SRCFILTER && GSRCIDX>=0 && (GSRCIDX<rw.length?rw[GSRCIDX]:"")!==SRCFILTER) continue;
+    if(q){ if(rw.join("  ").toLowerCase().indexOf(q)<0) continue; }
+    rows.push(rw);
+  }
+  if(GSORTKEY>=0){ var k=GSORTKEY, dir=GSORTDIR; rows=rows.slice(0);
+    rows.sort(function(a,b){ var x=(k<a.length?a[k]:""), y=(k<b.length?b[k]:"");
+      if(isNumStr(x)&&isNumStr(y)) return (parseFloat(x)-parseFloat(y))*dir;
+      x=String(x).toLowerCase(); y=String(y).toLowerCase(); return x<y?-dir:(x>y?dir:0); });
+  }
+  $("statbar").innerHTML=stat(nf(GROWS.length),"rows")+stat(nf(GHEAD.length),"columns")+stat(nf(rows.length),"matching")+
+    '<span class="stat" style="min-width:240px"><span class="n" style="font-size:12px">'+esc(GSRC)+'</span><span class="l">source</span></span>';
+  var shown=rows.length>MAXROWS?MAXROWS:rows.length;
+  var h="<thead><tr>";
+  for(var c=0;c<GHEAD.length;c++){ var ar=(GSORTKEY===c)?(GSORTDIR>0?" ▲":" ▼"):""; h+='<th data-k="'+c+'">'+esc(GHEAD[c])+ar+'</th>'; }
+  h+="</tr></thead><tbody>";
+  for(var r=0;r<shown;r++){ var row=rows[r]; h+="<tr>";
+    for(var c2=0;c2<GHEAD.length;c2++){ var v=(c2<row.length?row[c2]:""); h+='<td class="mono" title="'+esc(v)+'">'+esc(v)+'</td>'; }
+    h+="</tr>"; }
+  h+="</tbody>"; $("tbl").innerHTML=h;
+  $("count").innerHTML=nf(rows.length)+" rows"+(shown<rows.length?(" (showing "+nf(shown)+")"):"");
+  var ths=$("tbl").getElementsByTagName("th");
+  for(var i2=0;i2<ths.length;i2++){ ths[i2].onclick=function(e){
+    e=e||window.event; var t=e.target||e.srcElement;
+    if(t && /\bcgrip\b/.test(t.className+"")) return;   // resize-grip interactions must not sort
+    var kk=parseInt(this.getAttribute("data-k"),10);
+    if(GSORTKEY===kk) GSORTDIR*=-1; else { GSORTKEY=kk; GSORTDIR=1; } renderGeneric(); }; }
+  setupColResize();
+  applyFreeze();
+  window.__viewRows=rows;
+}
+function setMode(m){
+  MODE=m; var pf=(m==="rbin");
+  showEl("pfCards",pf); showEl("pfCats",pf); showEl("pfDateCtl",pf); showEl("pfFoot",pf);
+  showEl("iocBtn",pf); showEl("viewToggle",pf);
+  if(!pf){ showEl("iocWrap",false); closeDetail(); }
+  if(pf) showEl("srcWrap",false);
+  $("ovTitle").innerHTML = pf ? "Overview &mdash; reflects active filters" : "Overview";
+  $("tableTitle").innerHTML = pf ? ((VIEW==="time")?"Deletion timeline (by DeletedOn)":((VIEW==="users")?"Users (grouped per SID)":"Recycle-bin deletions")) : "Records";
+}
+
+/* ---------- export / copy ---------- */
+function cq(v){ v=(v==null)?"":String(v); return /[",\r\n]/.test(v)?('"'+v.replace(/"/g,'""')+'"'):v; }
+function nowStamp(){ var d=new Date(); function p(x){return (x<10?"0":"")+x;}
+  return d.getFullYear()+""+p(d.getMonth()+1)+p(d.getDate())+"_"+p(d.getHours())+p(d.getMinutes())+p(d.getSeconds()); }
+function exportView(){
+  if(MODE==="generic"){ exportGeneric(); return; }
+  if(VIEW==="users"){ exportUsers(); return; }
+  var rows=window.__viewRows||[];
+  if(!rows.length){ setStatus("Nothing to export","err"); return; }
+  var head=["OrigName","OrigPath","Ext","DeletedOn_UTC","SizeBytes","SID","FileType","Tags","Score","Suspicious","SourceI"];
+  var lines=[head.join(",")];
+  for(var i=0;i<rows.length;i++){ var r=rows[i];
+    lines.push([cq(r.origName),cq(r.origPath),cq(r.ext),cq(r.deletedOn),cq(r.sizeBytes),cq(r.sid),cq(r.fileType),
+      cq(r.tags.join("; ")),cq(r.score),cq(r.sus?"Yes":"No"),cq(r.source)].join(",")); }
+  var dir=LASTOUTDIR||$("outDir").value;
+  var path=dir+"\\"+((VIEW==="time")?"timeline_export_":"filtered_export_")+nowStamp()+".csv";
+  try{ writeUtf8(path, lines.join("\r\n")); setStatus("Exported "+nf(rows.length)+" rows → "+path,"ok"); appendLog("Exported: "+path); }
+  catch(e){ setStatus("Export failed: "+e.message,"err"); }
+}
+function exportUsers(){
+  var groups=window.__viewRows||[];
+  if(!groups.length){ setStatus("Nothing to export","err"); return; }
+  var head=["SID","Deletions","TotalBytes","NewestDeletion_UTC","Suspicious","MaxScore"];
+  var lines=[head.join(",")];
+  for(var i=0;i<groups.length;i++){ var g=groups[i];
+    lines.push([cq(g.sid),cq(g.n),cq(g.bytes),cq(g.newest),cq(g.sus),cq(g.maxScore)].join(",")); }
+  var dir=LASTOUTDIR||$("outDir").value;
+  var path=dir+"\\users_export_"+nowStamp()+".csv";
+  try{ writeUtf8(path, lines.join("\r\n")); setStatus("Exported "+nf(groups.length)+" users → "+path,"ok"); appendLog("Exported: "+path); }
+  catch(e){ setStatus("Export failed: "+e.message,"err"); }
+}
+function exportGeneric(){
+  var rows=window.__viewRows||[];
+  if(!GHEAD||!rows.length){ setStatus("Nothing to export","err"); return; }
+  var lines=[]; var hd=[]; for(var c=0;c<GHEAD.length;c++) hd.push(cq(GHEAD[c])); lines.push(hd.join(","));
+  for(var i=0;i<rows.length;i++){ var rw=rows[i]; var cells=[]; for(var c2=0;c2<GHEAD.length;c2++) cells.push(cq(c2<rw.length?rw[c2]:"")); lines.push(cells.join(",")); }
+  var dir=LASTOUTDIR||$("outDir").value;
+  var path=dir+"\\filtered_export_"+nowStamp()+".csv";
+  try{ writeUtf8(path, lines.join("\r\n")); setStatus("Exported "+nf(rows.length)+" rows → "+path,"ok"); appendLog("Exported: "+path); }
+  catch(e){ setStatus("Export failed: "+e.message,"err"); }
+}
+function copyNotes(){
+  if(MODE==="generic"){
+    var grows=(window.__viewRows||[]).slice(0,500); if(!GHEAD||!grows.length){ setStatus("Nothing to copy","err"); return; }
+    var gout=[GHEAD.join("\t")];
+    for(var g=0;g<grows.length;g++) gout.push(grows[g].join("\t"));
+    try{ window.clipboardData.setData("Text", gout.join("\r\n")); setStatus("Copied "+grows.length+" rows (TSV)","ok"); }
+    catch(eg){ setStatus("Copy failed: "+eg.message,"err"); }
+    return;
+  }
+  var rows=(window.__viewRows||[]).slice(0,500);
+  if(!rows.length){ setStatus("Nothing to copy","err"); return; }
+  var out=[];
+  if(VIEW==="users"){
+    for(var j=0;j<rows.length;j++){ var g2=rows[j];
+      out.push(g2.sid+" | deletions="+g2.n+" | bytes="+g2.bytes+" ("+fmtSize(g2.bytes)+") | sus="+g2.sus+" | max score "+g2.maxScore+" | newest "+g2.newest); }
+    try{ window.clipboardData.setData("Text", out.join("\r\n")); setStatus("Copied "+out.length+" users to clipboard","ok"); }
+    catch(et){ setStatus("Copy failed: "+et.message,"err"); }
+    return;
+  }
+  for(var i=0;i<rows.length;i++){ var r=rows[i];
+    out.push(r.deletedOn+" | "+r.origPath+" | "+nf(r.sizeBytes)+" bytes | "+r.sid
+      +(r.tags.length?(" | "+r.tags.join(",")+" (score "+r.score+")"):"")
+      +(r.reasons.length?(" | "+r.reasons.join("; ")):"")); }
+  try{ window.clipboardData.setData("Text", out.join("\r\n"));
+    setStatus("Copied "+out.length+" rows to clipboard","ok"); }
+  catch(e){ setStatus("Copy failed: "+e.message,"err"); }
+}
+
+/* ---------- IOC list ---------- */
+function applyIocs(){
+  var t=$("iocBox").value, parts=String(t).split(/[\r\n,;]+/), out=[];
+  for(var i=0;i<parts.length;i++){ var s=trimStr(parts[i]).toLowerCase(); if(s) out.push(s); }
+  IOCS=out;
+  $("iocInfo").innerHTML=IOCS.length?(nf(IOCS.length)+" term(s) active"):"no terms";
+  if(MODE==="rbin"&&ROWS.length){ rescoreAll(); render(); if(DETREC) renderDetail(DETREC); }
+  setStatus(IOCS.length?("IOC list applied — "+IOCS.length+" term(s), records rescored"):"IOC list cleared","ok");
+}
+
+/* ---------- wiring ---------- */
+function init(){
+  try{ window.resizeTo(1320,900); }catch(e){}
+  $("appver").innerHTML="&middot; v"+APP_VERSION;
+  try{ document.title="RBCmd Wrapper v"+APP_VERSION; }catch(e){}
+  $("tblScroll").onscroll=applyFreeze;
+  loadSettings();
+  var fso=new ActiveXObject("Scripting.FileSystemObject");
+  // default input is EMPTY: a live C:\$Recycle.Bin is per-SID and admin-locked, so there is no
+  // useful live default — point the app at a collected bin / collection tree (spec §Family contract)
+  $("inMode").value="d";
+  $("hostName").onkeyup=function(){ HOST_TOUCHED=true; syncOutDir(); };
+  $("outDir").onkeyup=function(){ OUT_TOUCHED=true; };
+  loadToolkitIoc();   // shared toolkit IOC.txt — merged before any CLI /auto run
+
+  var zoom=0.9;
+  var zContent=$("content");
+  function applyZoom(){ zContent.style.zoom=zoom; var p=Math.round(zoom*100)+"%";
+    $("fup").title="Larger text ("+p+")"; $("fdown").title="Smaller text ("+p+")"; }
+  applyZoom();
+  $("fup").onclick=function(){ zoom=Math.min(zoom+0.15,2.5); applyZoom(); };
+  $("fdown").onclick=function(){ zoom=Math.max(zoom-0.15,0.6); applyZoom(); };
+
+  $("verBtn").onclick=checkVersion;
+  $("updBtn").onclick=downloadLatest;
+  $("openDirBtn").onclick=openDir;
+  $("procBtn").onclick=function(){ processPf(); };
+  $("loadSelBtn").onclick=function(){ var v=$("producedSel").value; if(!v) return;
+    setStatus("Loading "+v,"muted"); window.setTimeout(function(){ loadCsvFile(v); },50); };
+  $("browseBtn").onclick=function(){
+    if($("inMode").value==="d"){
+      // real folder picker — the HTML file input can only select files
+      try{
+        var sha=new ActiveXObject("Shell.Application");
+        var fld=sha.BrowseForFolder(0,"Select the folder holding recycle-bin data (a $Recycle.Bin, a per-SID bin folder, or a whole collection tree — the scan recurses and finds every $I).",0x51);
+        if(fld){ var p=""; try{ p=fld.Self.Path+""; }catch(e2){}
+          if(/^[a-z]:\\|^\\\\/i.test(p)){ $("pfPath").value=p; hostGuessFrom(p); }
+          else if(p) setStatus("That selection has no filesystem path — pick a real folder.","err"); }
+      }catch(e){ $("pfPick").click(); }   // fallback to the file picker if the shell dialog is unavailable
+    } else { $("pfPick").click(); }
+  };
+  $("pfPick").onchange=function(){ if(this.value){ var v=this.value;
+    if($("inMode").value==="d"){ var i=v.lastIndexOf("\\"); if(i>0) v=v.substring(0,i); }
+    $("pfPath").value=v; hostGuessFrom(v); } };
+  $("loadBtn").onclick=function(){ $("csvPick").click(); };
+  $("csvPick").onchange=function(){ if(this.value){ setStatus("Loading "+this.value,"muted"); loadCsvFile(this.value); } };
+  $("logToggle").onclick=function(){ var l=$("log");
+    if(l.style.display==="none"||!l.style.display){
+      if(!trimStr(l.innerHTML.replace(/<[^>]*>/g,""))){ l.innerHTML='<span class="muted">(empty — RBCmd output appears here after a run finishes. While a run is in progress a console window shows live progress.)</span>'; l.setAttribute("data-ph","1"); }
+      l.style.display="block"; this.innerHTML="Hide log";
+    } else { l.style.display="none"; this.innerHTML="Show log"; } };
+
+  var catBtns=$("pfCats").getElementsByTagName("button");
+  for(var i=0;i<catBtns.length;i++){ if(catBtns[i].getAttribute("data-cat")){ catBtns[i].onclick=function(){
+    CURCAT=this.getAttribute("data-cat"); highlightCat(); render();
+  }; } }
+
+  $("q").onkeyup=function(){ if(qTimer) window.clearTimeout(qTimer);
+    qTimer=window.setTimeout(function(){ QUERY=trimStr($("q").value).toLowerCase(); render(); },150); };
+  $("dfrom").onchange=function(){ DFROM=dayNum(this.value); render(); };
+  $("dto").onchange=function(){ DTO=dayNum(this.value); render(); };
+  $("srcSel").onchange=function(){ SRCFILTER=this.value; render(); };
+  $("clearBtn").onclick=function(){ $("q").value="";$("dfrom").value="";$("dto").value="";$("srcSel").value="";
+    QUERY="";DFROM=0;DTO=0;SRCFILTER="";CURCAT="all"; highlightCat(); render(); };
+  $("exportBtn").onclick=exportView;
+  $("copyBtn").onclick=copyNotes;
+
+  $("vDel").onclick=function(){ setView("del"); };
+  $("vTime").onclick=function(){ setView("time"); };
+  $("vUsers").onclick=function(){ setView("users"); };
+  $("iocBtn").onclick=function(){ var w=$("iocWrap"); showEl("iocWrap", /\bhide\b/.test(w.className)); };
+  $("iocApply").onclick=applyIocs;
+  $("iocLoad").onclick=function(){ $("iocPick").click(); };
+  $("iocPick").onchange=function(){ if(this.value){
+    try{ $("iocBox").value=readUtf8(this.value); applyIocs(); }
+    catch(e){ setStatus("Could not read IOC file: "+e.message,"err"); } } };
+  $("detClose").onclick=closeDetail;
+  $("detCopy").onclick=copyDetail;
+
+  /* click delegation: data-q anywhere → search filter; data-catq (Users view) → filter Deletions
+     to that SID; deletions/timeline table row → detail pane */
+  document.onclick=function(e){ e=e||window.event; var t=e.target||e.srcElement;
+    if(t && /\bcgrip\b/.test((t.className||"")+"")) return;   // column-resize grips never act as row/link clicks
+    var cq2=t&&t.getAttribute?t.getAttribute("data-catq"):null;
+    if(cq2){ $("q").value=cq2; QUERY=cq2.toLowerCase(); setView("del"); return; }
+    var q=t&&t.getAttribute?t.getAttribute("data-q"):null;
+    if(q){ $("q").value=q; QUERY=q.toLowerCase(); render(); return; }
+    if(MODE!=="rbin") return;
+    var n=t;
+    while(n && n.tagName!=="TR"){ n=n.parentNode; if(n&&n.tagName==="TABLE") { n=null; break; } }
+    if(n && n.getAttribute && n.getAttribute("data-i")!=null && n.getAttribute("data-i")!==""){
+      var ix=parseInt(n.getAttribute("data-i"),10);
+      var rows=window.__viewRows||[];
+      if(ix>=0&&ix<rows.length){
+        var rr=rows[ix];
+        renderDetail(rr);
+        var trs=$("tbl").getElementsByTagName("tr");
+        for(var z=0;z<trs.length;z++){ if(trs[z].getAttribute("data-i")!=null){
+          var zi=parseInt(trs[z].getAttribute("data-i"),10);
+          var zr=rows[zi]?(rows[zi].rec||rows[zi]):null;
+          trs[z].className = (zi===ix) ? (((zr&&zr.sus)?"sus ":"")+"sel") : ((zr&&zr.sus)?"sus":""); } }
+      }
+    }
+  };
+
+  var __cli=parseCli(); var __had=false; try{ __had=applyCli(__cli); }catch(eC){ appendLog("CLI parse error: "+eC.message); }
+  evaluateTooling(!__had);
+  if(isNetworkPath(htaFolder()))
+    appendLog("Heads-up: this app is running from a network location ("+htaFolder()+"). Windows zone policy may block the UTF-8 file reader there; the app falls back to ANSI IO automatically, but for full fidelity copy the folder to a local path (e.g. C:\\Tools\\RBCmd-Wrapper).");
+}
+function isNetworkPath(p){
+  try{ if(/^\\\\/.test(p)) return true;
+    var fso=new ActiveXObject("Scripting.FileSystemObject");
+    return fso.GetDrive(fso.GetDriveName(p)).DriveType===3;   // 3 = Remote
+  }catch(e){ return false; }
+}
+function dayNum(s){ if(!s) return 0; var m=String(s).match(/(\d{4})-(\d{1,2})-(\d{1,2})/); if(!m) return 0;
+  function p(x){ x=String(x); return x.length<2?("0"+x):x; }
+  return Number(m[1]+p(m[2])+p(m[3])); }
+
+/* ---------- help / about overlay ---------- */
+var GITHUB="https://github.com/bpmorris22/RBCmd-Wrapper";
+function openUrl(u){ try{ new ActiveXObject("WScript.Shell").Run('"'+u+'"',1,false); }catch(e){ setStatus("Could not open browser: "+e.message,"err"); } }
+function openHelp(){ try{ $("helpVer").innerHTML="v"+APP_VERSION; }catch(e){} showEl("helpModal",true); }
+function closeHelp(){ showEl("helpModal",false); }
+
+/* ---------- command-line invocation: "<inputOrCsv>" ["<outDir>"] [/auto] ----------
+   .csv → auto-load into the viewer; a $I file or directory → prefill input (+process if /auto).
+   Lets an external artifact-finder open the analyzer already pointed at a recycle-bin artifact. */
+/* HTA:APPLICATION.commandLine is UNDEFINED in IE=edge document mode (a known mshta quirk that silently
+   kills CLI args). Recover it from WMI: the newest mshta.exe process whose command line names this .hta. */
+function getCommandLine(){
+  try{ var cl=rbcmdHta.commandLine+""; if(cl && cl!=="undefined") return cl; }catch(e){}
+  try{
+    var lp=decodeURIComponent(location.pathname+"").replace(/^\//,"").replace(/\//g,"\\");
+    var fn=lp.substring(lp.lastIndexOf("\\")+1).toLowerCase(); if(!fn) return "";
+    var loc=new ActiveXObject("WbemScripting.SWbemLocator"), svc=loc.ConnectServer(".","root\\cimv2");
+    var q=svc.ExecQuery("SELECT CommandLine,CreationDate FROM Win32_Process WHERE Name='mshta.exe'");
+    var best="", bestDate="", en=new Enumerator(q);
+    for(; !en.atEnd(); en.moveNext()){ var pr=en.item(); var pcl=(pr.CommandLine==null?"":pr.CommandLine+"");
+      if(pcl.toLowerCase().indexOf(fn)<0) continue; var cd=(pr.CreationDate==null?"":pr.CreationDate+"");
+      if(!best || cd>bestDate){ best=pcl; bestDate=cd; } }
+    return best;
+  }catch(e2){}
+  return "";
+}
+function tokenizeCmdTail(){ var cl=getCommandLine(); if(!cl) return [];
+  var m=cl.match(/\.hta"?/i); var tail=m?cl.substring(m.index+m[0].length):cl;
+  var toks=[],i=0,n=tail.length,cur="",inq=false;
+  while(i<n){ var c=tail.charAt(i);
+    if(inq){ if(c==='"'){inq=false;} else cur+=c; i++; continue; }
+    if(c==='"'){ inq=true; i++; continue; }
+    if(c===' '||c==='\t'){ if(cur!==""){toks.push(cur);cur="";} i++; continue; }
+    cur+=c; i++; }
+  if(cur!=="") toks.push(cur); return toks; }
+function parseCli(){ var toks=tokenizeCmdTail(), cli={input:"",outDir:"",auto:false};
+  for(var i=0;i<toks.length;i++){ var t=toks[i];
+    if(/^[\/\-]{1,2}auto$/i.test(t)){ cli.auto=true; continue; }
+    if(/^[\/\-]/.test(t)) continue;
+    if(!cli.input) cli.input=t; else if(!cli.outDir) cli.outDir=t; }
+  return cli; }
+function applyCli(cli){ if(!cli.input) return false;
+  var fso=new ActiveXObject("Scripting.FileSystemObject");
+  if(/\.csv$/i.test(cli.input) && fso.FileExists(cli.input)){ appendLog("CLI: loading CSV "+cli.input); window.setTimeout(function(){ loadCsvFile(cli.input); },60); return true; }
+  if(fso.FolderExists(cli.input)){ $("inMode").value="d"; $("pfPath").value=cli.input; }
+  else if(fso.FileExists(cli.input)){ $("inMode").value="f"; $("pfPath").value=cli.input; }
+  else { setStatus("CLI input not found: "+cli.input,"err"); appendLog("CLI input not found: "+cli.input); return false; }
+  if(cli.outDir){ $("outDir").value=cli.outDir; OUT_TOUCHED=true; hostGuessFrom(cli.outDir); }
+  else hostGuessFrom(cli.input);
+  if(cli.auto){ appendLog("CLI: /auto — processing "+cli.input); window.setTimeout(function(){ processPf(); },200); }
+  else setStatus("CLI: input prefilled — click 'Process → analyze' to run.","muted");
+  return true; }
+
+/* ---------- self-update: quiet check of this app's GitHub Releases; one-click download of a newer .hta ---------- */
+var SELF_REPO="bpmorris22/RBCmd-Wrapper", SELF_HTA="RBCmd-Wrapper.hta", SELF_LATEST="", SELF_ASSET_URL="";
+function selfVerNewer(r,l){ var a=String(r).split("."),b=String(l).split("."),n=Math.max(a.length,b.length);
+  for(var i=0;i<n;i++){ var x=parseInt(a[i],10)||0,y=parseInt(b[i],10)||0; if(x!==y) return x>y; } return false; }
+function selfPath(){ try{ var p=decodeURIComponent(location.pathname+"").replace(/^\//,"").replace(/\//g,"\\");
+  if(/\.hta$/i.test(p) && fileExists(p)) return p; }catch(e){} return (htaFolder()||"")+"\\"+SELF_HTA; }
+function checkSelfUpdate(){
+  try{
+    var x=new ActiveXObject("MSXML2.XMLHTTP.6.0");
+    x.open("GET","https://api.github.com/repos/"+SELF_REPO+"/releases/latest",true);
+    try{ x.setRequestHeader("User-Agent",SELF_HTA); }catch(eh){}
+    x.onreadystatechange=function(){ if(x.readyState!==4) return;
+      try{ if(x.status!==200) return; var t=x.responseText+"";
+        var m=t.match(/"tag_name"\s*:\s*"v?([0-9.]+)"/i); if(!m) return;
+        var latest=m[1]; if(!selfVerNewer(latest,APP_VERSION)) return;
+        var url="", re=/"browser_download_url"\s*:\s*"([^"]+\.hta)"/ig, mm;
+        while((mm=re.exec(t))){ if(mm[1].toLowerCase().indexOf(SELF_HTA.toLowerCase())>=0){ url=mm[1]; break; } if(!url) url=mm[1]; }
+        if(!url) url="https://github.com/"+SELF_REPO+"/releases/download/v"+latest+"/"+SELF_HTA;
+        SELF_LATEST=latest; SELF_ASSET_URL=url;
+        var b=$("selfUpd"); if(b){ b.innerHTML="Update to v"+latest; b.className="btn primary";
+          b.title="A newer "+SELF_HTA+" (v"+latest+") is on GitHub — click to download & replace this file"; }
+      }catch(e){} };
+    x.send();
+  }catch(e){}
+}
+function doSelfUpdate(){
+  if(!SELF_ASSET_URL){ setStatus("No update available (or offline).","muted"); return; }
+  var target=selfPath();
+  if(!target || !/\.hta$/i.test(target)){ setStatus("Can't locate this app's own file to update in place.","err"); return; }
+  if(!confirm("Download "+SELF_HTA+" v"+SELF_LATEST+" and replace this file?\n\n"+target+"\n\nAfter it downloads, close and reopen the app to run the new version.")) return;
+  setStatus("Downloading v"+SELF_LATEST+"…","muted");
+  var fso=new ActiveXObject("Scripting.FileSystemObject"), tmp=fso.GetSpecialFolder(2)+"";
+  var ps1=tmp+"\\selfupd_"+new Date().getTime()+Math.floor(Math.random()*100000)+".ps1";
+  var tq=String(target).replace(/'/g,"''"), uq=String(SELF_ASSET_URL).replace(/'/g,"''");
+  var L=["$ErrorActionPreference='Stop'","[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12",
+    "$u='"+uq+"'","$t='"+tq+"'","$tmp=Join-Path $env:TEMP ('selfupd_'+[guid]::NewGuid().ToString('N')+'.hta')",
+    "Invoke-WebRequest -Uri $u -OutFile $tmp -Headers @{ 'User-Agent'='"+SELF_HTA+"' }",
+    "if((Get-Item $tmp).Length -lt 2000){ throw 'downloaded file too small' }",
+    "Copy-Item $tmp $t -Force","Remove-Item $tmp -Force -ErrorAction SilentlyContinue","Write-Output 'SELFUPD_OK'"];
+  try{ var f=fso.CreateTextFile(ps1,true); f.Write(L.join("\r\n")); f.Close(); }catch(ew){ setStatus("Self-update stage failed: "+ew.message,"err"); return; }
+  try{ var r=runBat(['powershell -NoProfile -ExecutionPolicy Bypass -File "'+ps1+'" > "__LOG__" 2>&1']);
+    try{ fso.DeleteFile(ps1); }catch(e0){}
+    if((r.log+"").indexOf("SELFUPD_OK")>=0){ var b=$("selfUpd"); if(b) b.className="btn primary hide";
+      setStatus("Updated to v"+SELF_LATEST+" — CLOSE and reopen the app to run the new version.","ok");
+      try{ alert("Update installed (v"+SELF_LATEST+").\n\nClose and reopen "+SELF_HTA+" to run the new version."); }catch(e){}
+    } else { appendLog("--- self-update ---\n"+r.log); setStatus("Self-update failed — see log; download manually from GitHub if needed.","err"); }
+  }catch(e){ setStatus("Self-update failed: "+e.message,"err"); }
+}
+window.onload=function(){ init(); try{ window.setTimeout(checkSelfUpdate,600); }catch(e){} };
+</script>
+<div id="helpModal" class="modal hide" onclick="if((event.srcElement||{}).id==='helpModal')closeHelp()">
+  <div class="mcard">
+    <span class="x" onclick="closeHelp()" title="Close">&times;</span>
+    <h2>RBCmd Wrapper <span class="muted" style="font-size:13px;font-weight:400" id="helpVer"></span></h2>
+    <div class="gh muted">GitHub: <span class="lnk" onclick="openUrl(GITHUB)">https://github.com/bpmorris22/RBCmd-Wrapper</span></div>
+    <p>A single-file GUI for triaging the <b>Windows Recycle Bin</b> with Eric Zimmerman's RBCmd — runs RBCmd over the <code>$I</code> metadata files (original path, size, deletion time) and turns the output into an interactive, suspicion-scored &quot;what was deleted, when, by which account&quot; view.</p>
+    <h3>Quick start</h3>
+    <ul>
+      <li>Put <code>RBCmd.exe</code> next to this <code>.hta</code>, or use <b>Update / download RBCmd</b> to fetch it. RBCmd is near-instant — parsing $I metadata is trivial work.</li>
+      <li>Point the input at a collected <code>$Recycle.Bin</code>, a single per-user bin folder, a single <code>$I</code> file, or a whole collection tree/host root — directory mode recurses and finds every <code>$I</code> (and legacy <code>INFO2</code>) below (KAPE/Velociraptor trees work as-is). Then <b>Process → analyze</b>.</li>
+      <li>Or <b>Load existing CSV…</b> to view an RBCmd CSV (or any CSV) you already have.</li>
+    </ul>
+    <h3>Command line</h3>
+    <p><code>mshta "RBCmd-Wrapper.hta" "&lt;inputOrCsv&gt;" ["&lt;outDir&gt;"] [/auto]</code></p>
+    <ul>
+      <li><code>&lt;input&gt;</code> — a <code>.csv</code> (auto-loads into the viewer) or a <code>$I</code> file / directory (prefilled; processed with <code>/auto</code>).</li>
+      <li><code>&lt;outDir&gt;</code> — CSV output directory (optional). &nbsp; <code>/auto</code> — process immediately.</li>
+      <li><b>Target hostname</b> is required before processing — it names the output folder <code>_Processed\&lt;host&gt;\RBCmd</code> next to this app (family convention shared with the Artifact-Finder). It is guessed from <code>Collection-&lt;host&gt;-…</code> paths or a passed <code>_Processed\&lt;host&gt;\</code> outDir — overwrite the guess if it's wrong.</li>
+      <li><b>Shared IOC list</b>: an <code>IOC.txt</code> next to this app (one term per line, <code>#</code> comments) is auto-merged into the IOC box at launch — one list covers the whole toolkit. Terms you paste locally are kept.</li>
+      <li>After every successful run a <code>runinfo.json</code> provenance entry (app, host, input path, files) is appended in the output folder, including a <b>triage summary</b> (entries, flagged count, max score, top hits) — the Artifact-Finder shows these per host in its inventory, even for runs done outside the finder.</li>
+    </ul>
+    <h3>Notes</h3>
+    <ul>
+      <li>Three views: <b>Deletions</b> (one row per deleted item, score-ranked), <b>Timeline</b> (same rows by deletion time) and <b>Users</b> (grouped per SID with deletion count, total bytes, newest deletion and max score — click a group to drill in).</li>
+      <li>Suspicion scoring B1–B5 (IOC hit; deleted executable/script; deleted archive — a staging-cleanup signal; user-writable origin; system-dir origin) — rows with score &ge; 3 are shaded.</li>
+      <li><b>SIDs are shown raw.</b> Username resolution needs the SAM/SOFTWARE hive and is out of scope for v0.1.0 — map the <code>S-1-5-21-…</code> SID to an account offline if needed.</li>
+      <li>A surviving <code>$I</code> proves the deletion even when its matching <code>$R</code> content file is gone. An <b>emptied</b> bin leaves no <code>$I</code> at all — go to <code>$UsnJrnl</code> for those.</li>
+      <li>Columns are resizable &mdash; drag a header's right edge; double-click the edge to reset. Widths are remembered per view. All timestamps are UTC.</li>
+    </ul>
+    <p class="muted" style="font-size:11px">MIT © 2026 Ben Morris — click the link above for the full README &amp; releases.</p>
+  </div>
+</div>
+
+</body>
+</html>
