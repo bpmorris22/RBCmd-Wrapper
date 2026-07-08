@@ -19,7 +19,7 @@
   SELECTION="yes" />
 <!--
   RBCmd CSV contract, VERIFIED 2026-07-07 against RBCmd 1.5.0.0 (KAPE Modules\bin copy) on real
-  as-dbms $I files:
+  $I files:
 
   <yyyyMMddHHmmss>_RBCmd_Output.csv  (one row per recovered $I / INFO2 record) in the outDir root:
     SourceName,FileType,FileName,FileSize,DeletedOn
@@ -135,7 +135,7 @@
     <input type="file" id="pfPick" style="display:none">
     <button class="btn" id="browseBtn">Browse&hellip;</button>
     <label class="fld" title="Required before processing. Guessed from the input path (Collection-<host>-… segments, or this machine for live paths) — overwrite it if the guess is wrong.">Target hostname (required) &mdash; names the output folder _Processed\&lt;host&gt;\RBCmd next to this app</label>
-    <input class="txt" id="hostName" value="" style="width:260px" placeholder="e.g. LT-2738RQ3">
+    <input class="txt" id="hostName" value="" style="width:260px" placeholder="e.g. WORKSTATION-01">
     <label class="fld">CSV output directory</label>
     <input class="txt wide" id="outDir" value="">
     <button class="btn" id="openDirBtn">Open folder</button>
@@ -227,7 +227,7 @@
 <script language="JScript">
 "use strict";
 
-var APP_VERSION = "0.2.0";
+var APP_VERSION = "0.2.1";
 var KNOWN_LATEST_RBCMD = "1.5.0.0";                                            // baseline as of 2026-07-07 (KAPE Modules\bin exe)
 var RBCMD_ZIP_URL = "https://download.ericzimmermanstools.com/RBCmd.zip";      // official EZ mirror (flat exe at zip root)
 var RBCMD_PAGE = "https://ericzimmerman.github.io/";                           // for live latest-version lookup
